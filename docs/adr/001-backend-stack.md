@@ -25,3 +25,7 @@ Two languages; generate API types. Async/connection discipline. Existing platfor
 ## Future Migration Path
 
 Version API/events. Extract modules only when justified. If Paperclip wins, supersede ADR and keep its stack.
+
+## Phase 0 disposition (2026-10-07)
+
+The Paperclip adoption gate did not clear. Fixture suites passed, but its documented unmanaged MCP path is outside gateway enforcement and the required project/root-budget/restart invariants remain unproven end to end. Proceed with this ADR's custom control layer for the next foundation phase. Reassess Paperclip if an isolated, fully mediated runtime and the missing fixtures become available. See [Phase 0 evidence](../research/phase-0-validation.md).

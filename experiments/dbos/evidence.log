@@ -1,0 +1,68 @@
+2026-10-07T03:04:41Z start-recovery
+before crash {'model': 1, 'after_signal': 0, 'run': 0, 'attempt': 0, 'effect': 0, 'schedule': 0}
+exit=41
+2026-10-07T03:04:42Z finish-recovery
+after restart fake-model-result {'model': 1, 'after_signal': 1, 'run': 0, 'attempt': 0, 'effect': 0, 'schedule': 0}
+exit=0
+2026-10-07T03:04:45Z dedupe
+dedupe done done {'model': 1, 'after_signal': 1, 'run': 1, 'attempt': 0, 'effect': 0, 'schedule': 0}
+exit=0
+2026-10-07T03:04:46Z start-effect
+exit=42
+2026-10-07T03:04:46Z finish-effect
+effect result reconciled {'model': 1, 'after_signal': 1, 'run': 1, 'attempt': 2, 'effect': 0, 'schedule': 0} ledger [(1,)]
+exit=0
+2026-10-07T03:04:49Z guard
+guard stopped {'model': 1, 'after_signal': 1, 'run': 1, 'attempt': 2, 'effect': 0, 'schedule': 0}
+exit=0
+2026-10-07T03:04:52Z cancel
+03:04:53 [ WARNING] (dbos:_core.py:833) Workflow phase0-cancel is no longer owned by this execution. Waiting for the owner's recorded outcome
+03:04:53 [   ERROR] (dbos:_core.py:1130) Exception encountered in background workflow:
+Traceback (most recent call last):
+  File "/tmp/phase0-dbos-venv/lib/python3.12/site-packages/dbos/_core.py", line 1123, in _execute_workflow_wthread
+    return Immediate[R](
+           ^^^^^^^^^^^^^
+  File "/tmp/phase0-dbos-venv/lib/python3.12/site-packages/dbos/_outcome.py", line 213, in __call__
+    return self._func()
+           ^^^^^^^^^^^^
+  File "/tmp/phase0-dbos-venv/lib/python3.12/site-packages/dbos/_outcome.py", line 133, in <lambda>
+    return Immediate(lambda: resolve_deferred(next(self._func)))
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/phase0-dbos-venv/lib/python3.12/site-packages/dbos/_outcome.py", line 70, in resolve_deferred
+    return cast(R, value.resolve())
+                   ^^^^^^^^^^^^^^^
+  File "/tmp/phase0-dbos-venv/lib/python3.12/site-packages/dbos/_outcome.py", line 60, in resolve
+    return self._sync_resolve()
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/phase0-dbos-venv/lib/python3.12/site-packages/dbos/_core.py", line 154, in <lambda>
+    lambda: dbos._sys_db.await_workflow_result(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/phase0-dbos-venv/lib/python3.12/site-packages/dbos/_sys_db.py", line 2273, in await_workflow_result
+    result = self.check_workflow_result(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/phase0-dbos-venv/lib/python3.12/site-packages/dbos/_sys_db.py", line 2260, in check_workflow_result
+    raise DBOSAwaitedWorkflowCancelledError(workflow_id)
+dbos._error.DBOSAwaitedWorkflowCancelledError: DBOS Error 13: Awaited workflow phase0-cancel was cancelled
+cancel CANCELLED {'model': 1, 'after_signal': 1, 'run': 1, 'attempt': 2, 'effect': 0, 'schedule': 0}
+exit=0
+2026-10-07T03:04:54Z schedule-before
+schedule before {'model': 1, 'after_signal': 1, 'run': 1, 'attempt': 2, 'effect': 0, 'schedule': 2} [('2026-10-07T03:04:55+00:00',), ('2026-10-07T03:04:56+00:00',)]
+exit=43
+2026-10-07T03:05:00Z schedule-after
+schedule after {'model': 1, 'after_signal': 1, 'run': 1, 'attempt': 2, 'effect': 0, 'schedule': 5} [('2026-10-07T03:04:55+00:00',), ('2026-10-07T03:04:56+00:00',), ('2026-10-07T03:04:57+00:00',), ('2026-10-07T03:05:02+00:00',), ('2026-10-07T03:05:03+00:00',)]
+exit=0
+2026-10-07T03:05:03Z start-version
+version before crash PENDING
+exit=44
+2026-10-07T03:05:04Z inspect-version
+version on v2 PENDING finished 0
+exit=0
+2026-10-07T03:05:05Z finish-version
+03:05:05 [ WARNING] (dbos:_dbos.py:685) Current version '1' is not the latest version. Latest version is '2'.
+version back on v1 finished finished 1
+exit=0
+events 12
+effects 1
+control 1
+schedule_unique (5, 5)
+assertions=passed
