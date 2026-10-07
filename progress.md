@@ -1,11 +1,12 @@
 # Project progress
 
-Updated: 2026-10-07. This is the execution ledger for the approved AI workforce architecture. Work moves through these tasks in order; each task requires evidence before it is marked complete. Keep this file current as the product grows.
+Updated: 2026-10-08. This is the execution ledger for the approved AI workforce architecture. Work moves through these tasks in order; each task requires evidence before it is marked complete. Keep this file current as the product grows.
 
 ## Current position
 
 - [x] Phase 0: Paperclip adoption assessment and isolated DBOS recovery proof. Evidence: `docs/research/phase-0-validation.md`, `experiments/dbos/evidence.log`. Paperclip adoption gate did not clear; use a small custom control layer over existing components.
-- [x] Phase 1: persistent, self-hosted foundation. Synthetic execution and artifact effects passed the acceptance checks below. Current task: Phase 2 provider/runtime boundaries.
+- [x] Phase 1: persistent, self-hosted foundation. Synthetic execution and artifact effects passed the acceptance checks below.
+- [ ] Phase 2 live native activation remains gated by independently verified pricing/charges and encrypted credentials; the running registry remains fixture-only. Independent Phase 3 fixture work can proceed without enabling live calls.
 
 ## Phase 1 tasks
 
@@ -29,7 +30,7 @@ Updated: 2026-10-07. This is the execution ledger for the approved AI workforce 
 
 ## Later MVP tasks
 
-- [ ] Phase 2: stable/versioned agent identities, two provider adapters, capability discovery, limits and fake-provider contract tests before opt-in capped live tests. Current task.
+- [ ] Phase 2: stable/versioned agent identities, two provider adapters, capability discovery, limits and fake-provider contract tests before opt-in capped live tests. Offline boundary validated; live activation remains open.
 - [ ] Phase 3: validated plans, tasks, messages and bounded Manager/direct delegation with cycle, duplicate and cancellation tests.
 - [ ] Phase 4: project-scoped facts and retrieval, immutable artifact versions and provenance tests.
 - [ ] Phase 5: governed tool gateway, default-deny policy and exact-effect durable approval, including mutation/replay/restart tests.
@@ -70,6 +71,18 @@ Updated: 2026-10-07. This is the execution ledger for the approved AI workforce 
 - Credential-file hardening: 31 backend tests passed. Symlinks, special files, weak permissions, excessive size, multiline secrets and invalid encoding were rejected. The backend image built; both unregistered adapters read a synthetic private key as UID 10001 in a network-disabled, read-only container with tmpfs. Encrypted credential storage/rotation remains open.
 - Usage normalization: 32 backend tests passed. The pinned Anthropic SDK's total input includes ordinary, cache-creation and cache-read tokens; the adapter now sums them. OpenAI cached/reasoning details are preserved without double counting its inclusive totals. A synthetic malformed response after dispatch kept both cost holds unknown and recorded the normalized error kind. Backend image built, Compose API/worker restarted and fixture smoke passed. Live price-class coverage remains unverified.
 - Offline native worker gate: 35 backend tests passed. API and DBOS worker ran the pinned OpenAI/Anthropic SDKs through in-memory HTTP only. Both success cases persisted one model call and calculated root/daily charge; replay made no second HTTP call. A malformed OpenAI reply kept both holds unknown and proposed no artifact. The non-root image built, Compose API/worker restarted and fixture smoke passed. The running registry remains fake-only.
+
+## Phase 3 tasks
+
+- [x] **3.1 Scoped prerequisite graph.** Persist task dependency edges with a migration. Serialize graph edits, reject cycles/cross-project/late edges, deduplicate repeats and block dispatch until prerequisites complete. Evidence: `docs/research/task-graph-validation.md`.
+- [ ] **3.2 Human task acceptance and assignment.** Add explicit reviewed-task acceptance and bounded task assignment records; keep acceptance and execution attempts distinct.
+- [ ] **3.3 Validated Manager plan proposals.** Persist typed proposals and validate task count, dependencies, project scope, assignees, duplicate work keys and revisions before admission.
+- [ ] **3.4 Governed delegation.** Admit Manager-mediated and direct specialist delegation through one service, with project ceilings, child/root budgets, depth, children and cycle limits.
+- [ ] **3.5 Verified messages and cancellation tree.** Persist sender-bound project/task messages with correlation, cap automatic replies, and cancel pending child work without later effects.
+
+## Verified Phase 3 fixture evidence
+
+- Task graph: 37 backend tests passed. Two new PostgreSQL tests covered same-project prerequisite admission, cycle/cross-project/self-link denial, duplicate idempotency, blocking dispatch until a prerequisite is completed, and two competing opposite edges leaving one valid edge. Alembic upgraded the disposable database and reported no pending metadata operations. The backend image built; Compose reached `d07f414db7a2`, API/worker restarted and fixture smoke passed. Human task acceptance and agent delegation are not yet implemented.
 
 ## Working rules and evidence
 

@@ -13,6 +13,7 @@ from .db import db_session
 from .models import Agent, AgentConfigVersion, AgentProjectGrant, Approval, ArtifactVersion, AuditEvent, BudgetAccount, Execution, Outbox, OwnerSession, Project, Task, now
 from .security import clear_auth_cookies, current_session, login, require_csrf, require_origin, set_auth_cookies
 from .services import AccessDenied, authorize_agent_project
+from .task_graph import dependencies_satisfied
 from .artifacts import proposal_valid
 from . import providers
 from .providers import ProviderError
@@ -193,6 +194,8 @@ def dispatch(task_id: str, data: DispatchInput, session: OwnerSession = Depends(
         authorize_agent_project(db, data.agent_id, task.project_id, 'project.execute')
     except AccessDenied:
         raise HTTPException(403, 'Project access denied')
+    if not dependencies_satisfied(db, task.id):
+        raise HTTPException(409, 'Task prerequisites are not completed')
     config = db.scalar(select(AgentConfigVersion).where(AgentConfigVersion.agent_id == data.agent_id).order_by(AgentConfigVersion.version.desc()).limit(1))
     if config is None:
         raise HTTPException(409, 'Agent has no configuration')
@@ -296,3 +299,5 @@ from .provider_api import router as provider_router  # noqa: E402
 app.include_router(provider_router)
 from .cost_reconciliation import router as cost_reconciliation_router  # noqa: E402
 app.include_router(cost_reconciliation_router)
+from .task_api import router as task_router  # noqa: E402
+app.include_router(task_router)

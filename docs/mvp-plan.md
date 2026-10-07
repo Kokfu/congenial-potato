@@ -1,6 +1,6 @@
 # MVP plan
 
-Status: architecture approved; Phase 0 execution is the next authorized task.
+Status: architecture approved; Phase 0 and the foundation are complete. Phase 3 fixture work is in progress, while native activation remains gated.
 
 ## Proof scenario
 
@@ -74,6 +74,6 @@ Paperclip fit after tests; first real daily workflow; accounts/caps; host archit
 
 Repository destination is now Kokfu/congenial-potato.
 
-## Stop
+## Current implementation boundary
 
-Approval authorizes bounded Phase 0, not unrestricted implementation/integrations. Report evidence before substantial app work.
+The running application uses fake providers only. Continue phase work in small, tested slices tracked in `progress.md`. Native paid calls, production integrations, public deployment and merges are outside the current fixture work.
