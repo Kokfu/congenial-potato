@@ -1,7 +1,6 @@
 from decimal import Decimal
 from pathlib import Path
 import hashlib
-from typing import Literal
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -15,6 +14,7 @@ from .models import Agent, AgentConfigVersion, AgentProjectGrant, Approval, Arti
 from .security import clear_auth_cookies, current_session, login, require_csrf, require_origin, set_auth_cookies
 from .services import AccessDenied, authorize_agent_project
 from .artifacts import proposal_valid
+from .providers import ProviderError, registry
 
 app = FastAPI(title='Workforce control plane', docs_url=None, redoc_url=None)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=[urlparse(get_settings().allowed_origin).hostname])
@@ -43,7 +43,7 @@ class AgentInput(BaseModel):
     name: str = Field(min_length=1, max_length=160)
     role: str = Field(min_length=1, max_length=120)
     instructions: str = Field(min_length=1, max_length=20000)
-    provider_connection: Literal['fixture']
+    provider_connection: str = Field(min_length=1, max_length=120)
     model_id: str = Field(min_length=1, max_length=160)
 
 
@@ -103,11 +103,22 @@ def create_project(data: ProjectInput, session: OwnerSession = Depends(require_c
 @app.get('/api/agents')
 def list_agents(_: OwnerSession = Depends(current_session), db: Session = Depends(db_session)):
     rows = db.scalars(select(Agent).order_by(Agent.created_at, Agent.id)).all()
-    return [{'id': row.id, 'name': row.name, 'role': row.role, 'status': row.status} for row in rows]
+    result = []
+    for row in rows:
+        config = db.scalar(select(AgentConfigVersion).where(AgentConfigVersion.agent_id == row.id)
+                           .order_by(AgentConfigVersion.version.desc()).limit(1))
+        result.append({'id': row.id, 'name': row.name, 'role': row.role, 'status': row.status,
+                       'provider_connection': config.provider_connection if config else None,
+                       'model_id': config.model_id if config else None, 'config_version': config.version if config else None})
+    return result
 
 
 @app.post('/api/agents', status_code=201)
 def create_agent(data: AgentInput, session: OwnerSession = Depends(require_csrf), db: Session = Depends(db_session)):
+    try:
+        registry.get(data.provider_connection).describe_capabilities(data.model_id)
+    except ProviderError as exc:
+        raise HTTPException(422, str(exc)) from exc
     agent = Agent(name=data.name, role=data.role)
     db.add(agent)
     db.flush()
@@ -172,7 +183,8 @@ def set_grant(agent_id: str, data: GrantInput, session: OwnerSession = Depends(r
 @app.post('/api/tasks/{task_id}/dispatch', status_code=202)
 def dispatch(task_id: str, data: DispatchInput, session: OwnerSession = Depends(require_csrf), db: Session = Depends(db_session)):
     task = db.execute(select(Task).where(Task.id == task_id).with_for_update()).scalar_one_or_none()
-    if task is None or db.get(Agent, data.agent_id) is None:
+    agent = db.execute(select(Agent).where(Agent.id == data.agent_id).with_for_update()).scalar_one_or_none()
+    if task is None or agent is None:
         raise HTTPException(404, 'Resource not found')
     if task.status != 'backlog':
         raise HTTPException(409, 'Task is already dispatched')
@@ -201,7 +213,8 @@ def get_execution(execution_id: str, _: OwnerSession = Depends(current_session),
     execution = db.get(Execution, execution_id)
     if execution is None:
         raise HTTPException(404, 'Execution not found')
-    return {'id': execution.id, 'task_id': execution.task_id, 'agent_id': execution.agent_id, 'status': execution.status, 'cancelled': execution.cancelled}
+    return {'id': execution.id, 'task_id': execution.task_id, 'agent_id': execution.agent_id,
+            'config_version_id': execution.config_version_id, 'status': execution.status, 'cancelled': execution.cancelled}
 
 
 @app.post('/api/executions/{execution_id}/cancel')
@@ -276,3 +289,7 @@ def get_artifact_version(version_id: str, _: OwnerSession = Depends(current_sess
     if hashlib.sha256(content).hexdigest() != row.digest:
         raise HTTPException(503, 'Artifact storage integrity failed')
     return {'id': row.id, 'artifact_id': row.artifact_id, 'version': row.version, 'content': content.decode('utf-8')}
+
+
+from .provider_api import router as provider_router  # noqa: E402
+app.include_router(provider_router)

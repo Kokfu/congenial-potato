@@ -193,5 +193,7 @@ class ModelCall(Base):
     execution_id: Mapped[str] = mapped_column(ForeignKey('executions.id'), unique=True)
     provider: Mapped[str] = mapped_column(String(120))
     model_id: Mapped[str] = mapped_column(String(160))
+    provider_request_id: Mapped[str | None] = mapped_column(String(240))
+    usage: Mapped[dict] = mapped_column(JSON, default=dict)
     result: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

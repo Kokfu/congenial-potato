@@ -29,13 +29,29 @@ Updated: 2026-10-07. This is the execution ledger for the approved AI workforce 
 
 ## Later MVP tasks
 
-- [ ] Phase 2: stable/versioned agent identities, two provider adapters, capability discovery, limits and fake-provider contract tests before opt-in capped live tests. Start with application-owned runtime/provider contracts and a provider-independent agent config update path. Use only fake adapters until capability and policy checks pass.
+- [ ] Phase 2: stable/versioned agent identities, two provider adapters, capability discovery, limits and fake-provider contract tests before opt-in capped live tests. Current task.
 - [ ] Phase 3: validated plans, tasks, messages and bounded Manager/direct delegation with cycle, duplicate and cancellation tests.
 - [ ] Phase 4: project-scoped facts and retrieval, immutable artifact versions and provenance tests.
 - [ ] Phase 5: governed tool gateway, default-deny policy and exact-effect durable approval, including mutation/replay/restart tests.
 - [ ] Phase 6: daily schedule, SSE timeline and shared daily budget, including missed-run and reconnect tests.
 - [ ] Phase 7: first bounded external read with SSRF and prompt-injection boundary tests.
 - [ ] Phase 8: isolated execution and external writes with idempotency and reconciliation.
+
+## Phase 2 tasks
+
+- [x] **2.1 Provider contracts and fake adapters.** Define application-owned typed request/response/capability/catalog contracts, normalized errors and a registry. Provide two deterministic fake adapters with differing capabilities and explicit catalog refresh; keep embeddings and media out of the conversation interface.
+- [x] **2.2 Stable agent configuration changes.** Add immutable config revisions and an authenticated update path. Keep the agent ID, project grants and history stable across fake provider switches; pin each execution to its recorded config revision.
+- [x] **2.3 Worker boundary and limits.** Route fixture generation through the provider registry without provider-name branches in orchestration. Validate required capabilities and reserve shared root budget before a model call. Record actual provider, model and usage with unknown values preserved.
+- [x] **2.4 Failure/restart contracts.** Test switching, incompatible capabilities, timeout, cancellation and replay with deterministic fake adapters and PostgreSQL/DBOS. Then run the private UI flow and Compose restart checks.
+- [ ] **2.5 Native providers after fixture gate.** Implement OpenAI and Anthropic adapters using verified current SDK APIs and licenses, with credential references outside prompts/logs. Keep all live calls opt-in, capped and disabled by default.
+
+## Verified Phase 2 fixture evidence
+
+- Provider boundary defines typed generation, streaming events with an authoritative final response, capabilities, catalog snapshots, usage estimates, normalized errors and cancellation/health methods. Fixture alpha and beta have different capabilities; timeout is a third failure fixture. No live adapter is registered.
+- Twelve PostgreSQL/DBOS backend tests passed. Agent switching preserved one identity and project grant; executions kept config versions 1 and 2 and recorded alpha and beta model calls. Unknown reported cost remained null. Unsupported models/capabilities failed closed; a timeout ended the workflow as failed, released its root reservation and recorded no model call.
+- `scripts/provider_switch_smoke.py` passed on Compose: same agent ID, two config versions, two fake provider calls. Chromium passed project/task/approval flow, switched the agent to beta and verified the next call used beta. Backend and web images built; migration exited successfully; API, DB and web were healthy.
+- Replayed a completed beta outbox dispatch after restarting the worker. Model-call and successful-completion audit counts remained 15 each, and undelivered outbox count returned to zero. No paid model requests or production credentials were used.
+- Remaining Phase 2 work: verify current OpenAI/Anthropic SDK versions, licenses and APIs, implement native adapters behind this contract, and test them with HTTP fixtures only before any opt-in capped live check. Provider-specific workflow version migrations need a drain/rollout procedure.
 
 ## Working rules and evidence
 

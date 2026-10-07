@@ -8,6 +8,7 @@ from .db import session_factory
 from .models import AgentConfigVersion, AuditEvent, BudgetAccount, BudgetReservation, Execution, ModelCall, Outbox, Task, now
 from .services import AccessDenied, authorize_agent_project, reserve_budget
 from .artifacts import apply_approved_artifacts, propose_fixture_artifact
+from .providers import GenerationRequest, GenerationResponse, ProviderError, TextMessage, registry
 
 RESERVATION = Decimal('0.010000')
 
@@ -21,12 +22,48 @@ def release_reservation(db, execution: Execution) -> None:
 
 
 @DBOS.step()
-def fake_model_step(execution_id: str) -> str:
-    return f'Synthetic result for execution {execution_id}'
+def generate_step(execution_id: str) -> dict:
+    with session_factory()() as db:
+        execution = db.get(Execution, execution_id)
+        config = db.get(AgentConfigVersion, execution.config_version_id)
+        task = db.get(Task, execution.task_id)
+        if execution.cancelled:
+            return {'error': 'cancelled', 'retryable': False}
+        try:
+            authorize_agent_project(db, execution.agent_id, task.project_id, 'project.execute')
+        except AccessDenied:
+            return {'error': 'policy_denied', 'retryable': False}
+        request = GenerationRequest(request_id=execution_id, model_id=config.model_id,
+                                    messages=(TextMessage(role='system', trust_origin='human', text=config.instructions),
+                                              TextMessage(role='user', trust_origin='human', text=task.title)),
+                                    max_output_tokens=128)
+        try:
+            response = registry.get(config.provider_connection).generate(request)
+        except ProviderError as exc:
+            return {'error': exc.kind.value, 'retryable': exc.retryable}
+        return response.model_dump(mode='json')
 
 
 @DBOS.step()
-def complete_step(execution_id: str, result: str) -> str:
+def fail_model_step(execution_id: str, error_kind: str) -> str:
+    with session_factory()() as db:
+        execution = db.execute(select(Execution).where(Execution.id == execution_id).with_for_update()).scalar_one()
+        task = db.get(Task, execution.task_id)
+        release_reservation(db, execution)
+        if execution.status in ('failed', 'cancelled'):
+            db.commit()
+            return execution.status
+        execution.status = 'cancelled' if execution.cancelled else 'failed'
+        task.status = execution.status
+        db.add(AuditEvent(actor=execution.agent_id, action='model.generate', resource=execution.id,
+                          outcome=error_kind, effect_key=f'model-error:{execution_id}'))
+        db.commit()
+        return execution.status
+
+
+@DBOS.step()
+def complete_step(execution_id: str, result: dict) -> str:
+    response = GenerationResponse.model_validate(result)
     with session_factory()() as db:
         execution = db.execute(select(Execution).where(Execution.id == execution_id).with_for_update()).scalar_one()
         task = db.get(Task, execution.task_id)
@@ -49,8 +86,10 @@ def complete_step(execution_id: str, result: str) -> str:
             return 'succeeded'
         config = db.get(AgentConfigVersion, execution.config_version_id)
         if db.scalar(select(ModelCall.id).where(ModelCall.execution_id == execution_id)) is None:
-            db.add(ModelCall(execution_id=execution_id, provider='fixture', model_id=config.model_id, result=result))
-        propose_fixture_artifact(db, execution, result)
+            db.add(ModelCall(execution_id=execution_id, provider=config.provider_connection,
+                             model_id=response.actual_model, provider_request_id=response.provider_request_id,
+                             usage=response.usage.model_dump(mode='json'), result=response.content))
+        propose_fixture_artifact(db, execution, response.content)
         release_reservation(db, execution)
         task.status = 'review'
         execution.status = 'succeeded'
@@ -82,7 +121,9 @@ def run_fixture(execution_id: str) -> str:
         execution.status = 'running'
         task.status = 'running'
         db.commit()
-    result = fake_model_step(execution_id)
+    result = generate_step(execution_id)
+    if 'error' in result:
+        return fail_model_step(execution_id, result['error'])
     return complete_step(execution_id, result)
 
 
@@ -102,7 +143,7 @@ def dispatch_once() -> int:
 
 def main() -> None:
     settings = get_settings()
-    DBOS(config={'name': 'workforce', 'system_database_url': settings.workflow_url, 'application_version': 'foundation-v1', 'run_migrations': False, 'log_level': 'WARNING'})
+    DBOS(config={'name': 'workforce', 'system_database_url': settings.workflow_url, 'application_version': 'provider-boundary-v1', 'run_migrations': False, 'log_level': 'WARNING'})
     DBOS.launch()
     try:
         while True:
