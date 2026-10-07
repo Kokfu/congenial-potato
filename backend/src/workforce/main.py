@@ -293,3 +293,5 @@ def get_artifact_version(version_id: str, _: OwnerSession = Depends(current_sess
 
 from .provider_api import router as provider_router  # noqa: E402
 app.include_router(provider_router)
+from .cost_reconciliation import router as cost_reconciliation_router  # noqa: E402
+app.include_router(cost_reconciliation_router)
