@@ -314,3 +314,5 @@ from .task_api import router as task_router  # noqa: E402
 app.include_router(task_router)
 from .plan_api import router as plan_router  # noqa: E402
 app.include_router(plan_router)
+from .delegation_api import router as delegation_router  # noqa: E402
+app.include_router(delegation_router)
