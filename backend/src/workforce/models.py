@@ -1,0 +1,195 @@
+from datetime import datetime, timezone
+from decimal import Decimal
+from uuid import uuid4
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, JSON
+from sqlalchemy.orm import Mapped, mapped_column
+from .db import Base
+
+
+def uid() -> str:
+    return str(uuid4())
+
+
+def now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class Owner(Base):
+    __tablename__ = 'owners'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    username: Mapped[str] = mapped_column(String(100), unique=True)
+    password_hash: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class LoginAttempt(Base):
+    __tablename__ = 'login_attempts'
+    key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    failures: Mapped[int] = mapped_column(Integer, default=0)
+    blocked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class OwnerSession(Base):
+    __tablename__ = 'owner_sessions'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(ForeignKey('owners.id'))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    csrf_hash: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Project(Base):
+    __tablename__ = 'projects'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    name: Mapped[str] = mapped_column(String(160))
+    objective: Mapped[str] = mapped_column(Text, default='')
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Agent(Base):
+    __tablename__ = 'agents'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    name: Mapped[str] = mapped_column(String(160))
+    role: Mapped[str] = mapped_column(String(120))
+    status: Mapped[str] = mapped_column(String(30), default='active')
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AgentConfigVersion(Base):
+    __tablename__ = 'agent_config_versions'
+    __table_args__ = (UniqueConstraint('agent_id', 'version'),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    agent_id: Mapped[str] = mapped_column(ForeignKey('agents.id'))
+    version: Mapped[int] = mapped_column(Integer)
+    instructions: Mapped[str] = mapped_column(Text)
+    provider_connection: Mapped[str] = mapped_column(String(120))
+    model_id: Mapped[str] = mapped_column(String(160))
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AgentProjectGrant(Base):
+    __tablename__ = 'agent_project_grants'
+    __table_args__ = (UniqueConstraint('agent_id', 'project_id', 'action'),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    agent_id: Mapped[str] = mapped_column(ForeignKey('agents.id'))
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'))
+    action: Mapped[str] = mapped_column(String(60))
+    allowed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class Task(Base):
+    __tablename__ = 'tasks'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'))
+    parent_id: Mapped[str | None] = mapped_column(ForeignKey('tasks.id'))
+    title: Mapped[str] = mapped_column(String(240))
+    status: Mapped[str] = mapped_column(String(30), default='backlog')
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Execution(Base):
+    __tablename__ = 'executions'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    task_id: Mapped[str] = mapped_column(ForeignKey('tasks.id'))
+    agent_id: Mapped[str] = mapped_column(ForeignKey('agents.id'))
+    config_version_id: Mapped[str] = mapped_column(ForeignKey('agent_config_versions.id'))
+    root_id: Mapped[str] = mapped_column(String(36))
+    workflow_id: Mapped[str] = mapped_column(String(160), unique=True)
+    status: Mapped[str] = mapped_column(String(30), default='queued')
+    cancelled: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class PolicyRule(Base):
+    __tablename__ = 'policy_rules'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    subject: Mapped[str] = mapped_column(String(160))
+    action: Mapped[str] = mapped_column(String(100))
+    resource: Mapped[str] = mapped_column(String(240))
+    effect: Mapped[str] = mapped_column(String(30))
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class Approval(Base):
+    __tablename__ = 'approvals'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    execution_id: Mapped[str] = mapped_column(ForeignKey('executions.id'))
+    invocation_key: Mapped[str] = mapped_column(String(160), unique=True)
+    payload_hash: Mapped[str] = mapped_column(String(64))
+    schema_hash: Mapped[str] = mapped_column(String(64))
+    resource: Mapped[str] = mapped_column(String(240))
+    target_version: Mapped[str | None] = mapped_column(String(120))
+    status: Mapped[str] = mapped_column(String(30), default='pending')
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ArtifactVersion(Base):
+    __tablename__ = 'artifact_versions'
+    __table_args__ = (UniqueConstraint('artifact_id', 'version'),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    artifact_id: Mapped[str] = mapped_column(String(36))
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'))
+    version: Mapped[int] = mapped_column(Integer)
+    parent_id: Mapped[str | None] = mapped_column(ForeignKey('artifact_versions.id'))
+    execution_id: Mapped[str | None] = mapped_column(ForeignKey('executions.id'))
+    author: Mapped[str] = mapped_column(String(160))
+    digest: Mapped[str] = mapped_column(String(64))
+    mime_type: Mapped[str] = mapped_column(String(120))
+    size: Mapped[int] = mapped_column(Integer)
+    storage_ref: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class BudgetAccount(Base):
+    __tablename__ = 'budget_accounts'
+    root_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    cap: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    reserved: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0)
+    spent: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0)
+    currency: Mapped[str] = mapped_column(String(3), default='USD')
+
+
+class BudgetReservation(Base):
+    __tablename__ = 'budget_reservations'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    root_id: Mapped[str] = mapped_column(ForeignKey('budget_accounts.root_id'))
+    invocation_key: Mapped[str] = mapped_column(String(160), unique=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    status: Mapped[str] = mapped_column(String(30), default='reserved')
+
+
+class AuditEvent(Base):
+    __tablename__ = 'audit_events'
+    __table_args__ = (UniqueConstraint('effect_key', name='uq_audit_events_effect_key'),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    actor: Mapped[str] = mapped_column(String(160))
+    action: Mapped[str] = mapped_column(String(120))
+    resource: Mapped[str] = mapped_column(String(240))
+    outcome: Mapped[str] = mapped_column(String(30))
+    detail: Mapped[dict] = mapped_column(JSON, default=dict)
+    effect_key: Mapped[str | None] = mapped_column(String(160))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Outbox(Base):
+    __tablename__ = 'outbox'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    kind: Mapped[str] = mapped_column(String(100))
+    idempotency_key: Mapped[str] = mapped_column(String(160), unique=True)
+    payload: Mapped[dict] = mapped_column(JSON)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ModelCall(Base):
+    __tablename__ = 'model_calls'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    execution_id: Mapped[str] = mapped_column(ForeignKey('executions.id'), unique=True)
+    provider: Mapped[str] = mapped_column(String(120))
+    model_id: Mapped[str] = mapped_column(String(160))
+    result: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

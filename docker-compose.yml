@@ -1,0 +1,96 @@
+name: workforce
+services:
+  db:
+    image: postgres:17.6
+    environment:
+      POSTGRES_DB: workforce
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets: [db_password]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/init-db.sh:/docker-entrypoint-initdb.d/01-workflow-db.sh:ro
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U postgres -d workforce']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  migrate:
+    image: workforce-backend:phase1
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    command: [sh, -c, 'alembic -c alembic.ini upgrade head && python -m workforce.migrate_workflows && python -m workforce.bootstrap']
+    environment: &backend_env
+      DB_HOST: db
+      DB_USER: postgres
+      DB_PASSWORD_FILE: /run/secrets/db_password
+      APP_DB_NAME: workforce
+      DBOS_DB_NAME: workforce_dbos
+      INITIAL_ADMIN_PASSWORD_FILE: /run/secrets/initial_admin_password
+      ALLOWED_ORIGIN: ${PUBLIC_BASE_URL:-http://localhost:8080}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+    secrets: [db_password, initial_admin_password]
+    tmpfs: [/tmp]
+    depends_on:
+      db: {condition: service_healthy}
+    restart: 'no'
+  api:
+    image: workforce-backend:phase1
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    environment: *backend_env
+    secrets: [db_password, initial_admin_password]
+    tmpfs: [/tmp]
+    volumes:
+      - artifacts:/var/lib/workforce/artifacts
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+  worker:
+    image: workforce-backend:phase1
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    command: [python, -m, workforce.worker]
+    environment: *backend_env
+    secrets: [db_password, initial_admin_password]
+    tmpfs: [/tmp]
+    volumes:
+      - artifacts:/var/lib/workforce/artifacts
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    restart: unless-stopped
+  web:
+    image: workforce-web:phase1
+    environment:
+      NO_PROXY: api,db,localhost,127.0.0.1
+      no_proxy: api,db,localhost,127.0.0.1
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    ports:
+      - '${BIND_ADDR:-127.0.0.1}:${PORT:-8080}:8080'
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, wget, -Y, 'off', -q, -O, /dev/null, 'http://localhost:8080/health/live']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+secrets:
+  db_password:
+    file: ./.local/db_password
+  initial_admin_password:
+    file: ./.local/initial_admin_password
+volumes:
+  pgdata:
+  artifacts:
