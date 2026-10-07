@@ -21,7 +21,7 @@ docker compose up --build -d
 curl -fsS http://localhost:8080/health/ready
 ```
 
-Open `http://localhost:8080` and sign in as the provisioned owner. Only the web service binds the host, on loopback. The initial password file is read on first bootstrap; changing it later does not rotate the stored password. The Compose migration service runs once per startup before API and worker. The database and artifact directories use named volumes. Fixture runs create an artifact proposal; review its exact content in Approvals. The separate worker writes an immutable version only after approval.
+Open `http://localhost:8080` and sign in as the provisioned owner. Only the web service binds the host, on loopback. The initial password file is read on first bootstrap; changing it later does not rotate the stored password. The Compose migration service runs once per startup before API and worker. The database and artifact directories use named volumes. Fixture runs create an artifact proposal; review its exact content in Approvals. The separate worker writes an immutable version only after approval. The Agents page can switch a stable agent between synthetic provider fixtures; the next execution uses a new immutable config revision.
 
 ## Verify and restore
 
@@ -48,4 +48,4 @@ A full disposable Compose restore was tested on a separate loopback port: owner 
 
 ## Development checks
 
-Use PostgreSQL test databases and synthetic secrets. Apply migrations with `cd backend && APP_DATABASE_URL=... alembic -c alembic.ini upgrade head`. Run `PYTHONPATH=backend/src APP_DATABASE_URL=... INITIAL_ADMIN_PASSWORD_FILE=... pytest backend/tests` against a database named `workforce_test`. Build the UI with `cd frontend && npm ci && npm run build`. No paid provider or external tool is configured.
+Use PostgreSQL test databases and synthetic secrets. Apply migrations with `cd backend && APP_DATABASE_URL=... alembic -c alembic.ini upgrade head`. Run `PYTHONPATH=backend/src APP_DATABASE_URL=... INITIAL_ADMIN_PASSWORD_FILE=... pytest backend/tests` against a database named `workforce_test`. Build the UI with `cd frontend && npm ci && npm run build`. With the private Compose stack running, `python scripts/smoke.py` and `python scripts/provider_switch_smoke.py` exercise the fixture execution and provider switch. No paid provider or external tool is configured.

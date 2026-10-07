@@ -3,7 +3,17 @@ import { createRoot } from "react-dom/client";
 import "./style.css";
 
 type Project = { id: string; name: string; objective: string };
-type Agent = { id: string; name: string; role: string; status: string };
+type Agent = {
+  id: string;
+  name: string;
+  role: string;
+  status: string;
+  provider_connection: string;
+  model_id: string;
+  config_version: number;
+};
+type Catalog = { connection_id: string; models: { model_id: string }[] };
+type AgentConfig = { versions: { version: number; instructions: string }[] };
 type Task = { id: string; title: string; status: string };
 type Event = {
   id: string;
@@ -12,7 +22,13 @@ type Event = {
   outcome: string;
   created_at: string;
 };
-type Approval = { id: string; resource: string; status: string; payload_hash: string; content: string };
+type Approval = {
+  id: string;
+  resource: string;
+  status: string;
+  payload_hash: string;
+  content: string;
+};
 type Tab = "Projects" | "Agents" | "Approvals" | "Activity" | "Settings";
 const tabs: Tab[] = ["Projects", "Agents", "Approvals", "Activity", "Settings"];
 const csrf = () =>
@@ -47,6 +63,12 @@ function App() {
   const [tab, setTab] = useState<Tab>("Projects");
   const [projects, setProjects] = useState<Project[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [catalogs, setCatalogs] = useState<Catalog[]>([]);
+  const [newConnection, setNewConnection] = useState("fixture");
+  const [newModel, setNewModel] = useState("fake-v1");
+  const [switchTargets, setSwitchTargets] = useState<
+    Record<string, { connection: string; model: string }>
+  >({});
   const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
@@ -58,17 +80,19 @@ function App() {
   const [message, setMessage] = useState("");
   const [ready, setReady] = useState("checking");
   async function refresh() {
-    const [p, a, e, r] = await Promise.all([
+    const [p, a, e, r, c] = await Promise.all([
       api<Project[]>("/api/projects"),
       api<Agent[]>("/api/agents"),
       api<Event[]>("/api/activity"),
       api<Approval[]>("/api/approvals"),
+      api<Catalog[]>("/api/provider-connections"),
     ]);
     setProjects(p);
     setAgents(a);
     setRunAgentId((id) => id || a[0]?.id || "");
     setEvents(e);
     setApprovals(r);
+    setCatalogs(c);
     setProjectId((id) => id || p[0]?.id || "");
   }
   useEffect(() => {
@@ -307,8 +331,8 @@ function App() {
           <section className="panel">
             <h2>Agents</h2>
             <p className="muted">
-              Stable identities and versioned config. This foundation uses a
-              fake provider only.
+              Stable identities and versioned config. Only synthetic adapters
+              are available.
             </p>
             <form
               className="inline"
@@ -321,8 +345,8 @@ function App() {
                       name: agentName,
                       role: "specialist",
                       instructions: "Work only on assigned project tasks.",
-                      provider_connection: "fixture",
-                      model_id: "fake-v1",
+                      provider_connection: newConnection,
+                      model_id: newModel,
                     }),
                   });
                   setAgentName("");
@@ -335,57 +359,190 @@ function App() {
                 onChange={(e) => setAgentName(e.target.value)}
                 required
               />
+              <select
+                aria-label="New agent provider"
+                value={newConnection}
+                onChange={(e) => {
+                  const connection = e.target.value;
+                  setNewConnection(connection);
+                  setNewModel(
+                    catalogs.find((item) => item.connection_id === connection)
+                      ?.models[0]?.model_id ?? "",
+                  );
+                }}
+              >
+                {catalogs.map((item) => (
+                  <option key={item.connection_id} value={item.connection_id}>
+                    {item.connection_id}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="New agent model"
+                value={newModel}
+                onChange={(e) => setNewModel(e.target.value)}
+              >
+                {catalogs
+                  .find((item) => item.connection_id === newConnection)
+                  ?.models.map((model) => (
+                    <option key={model.model_id} value={model.model_id}>
+                      {model.model_id}
+                    </option>
+                  ))}
+              </select>
               <button>Add agent</button>
             </form>
-            {agents.map((a) => (
-              <div className="row" key={a.id}>
-                <div>
-                  <strong>{a.name}</strong>
-                  <small>
-                    {a.role} · {a.id.slice(0, 8)}
-                  </small>
-                </div>
-                <div className="actions">
-                  <span className="badge">{a.status}</span>
-                  {projectId && (
+            {agents.map((a) => {
+              const target = switchTargets[a.id] ?? {
+                connection: a.provider_connection,
+                model: a.model_id,
+              };
+              const models =
+                catalogs.find(
+                  (item) => item.connection_id === target.connection,
+                )?.models ?? [];
+              return (
+                <div className="row" key={a.id}>
+                  <div>
+                    <strong>{a.name}</strong>
+                    <small>
+                      {a.role} · {a.id.slice(0, 8)} · revision{" "}
+                      {a.config_version} · {a.provider_connection}/{a.model_id}
+                    </small>
+                  </div>
+                  <div className="actions">
+                    <span className="badge">{a.status}</span>
+                    <select
+                      aria-label={`Provider for ${a.name}`}
+                      value={target.connection}
+                      onChange={(e) => {
+                        const connection = e.target.value;
+                        setSwitchTargets((current) => ({
+                          ...current,
+                          [a.id]: {
+                            connection,
+                            model:
+                              catalogs.find(
+                                (item) => item.connection_id === connection,
+                              )?.models[0]?.model_id ?? "",
+                          },
+                        }));
+                      }}
+                    >
+                      {catalogs.map((item) => (
+                        <option
+                          key={item.connection_id}
+                          value={item.connection_id}
+                        >
+                          {item.connection_id}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      aria-label={`Model for ${a.name}`}
+                      value={target.model}
+                      onChange={(e) =>
+                        setSwitchTargets((current) => ({
+                          ...current,
+                          [a.id]: { ...target, model: e.target.value },
+                        }))
+                      }
+                    >
+                      {models.map((model) => (
+                        <option key={model.model_id} value={model.model_id}>
+                          {model.model_id}
+                        </option>
+                      ))}
+                    </select>
                     <button
                       className="quiet"
+                      disabled={
+                        target.connection === a.provider_connection &&
+                        target.model === a.model_id
+                      }
                       onClick={() =>
                         act(async () => {
-                          await api(`/api/agents/${a.id}/grants`, {
-                            method: "POST",
+                          const config = await api<AgentConfig>(
+                            `/api/agents/${a.id}/config`,
+                          );
+                          const latest = config.versions.at(-1);
+                          if (!latest)
+                            throw new Error("Agent configuration missing");
+                          await api(`/api/agents/${a.id}/config`, {
+                            method: "PUT",
                             body: JSON.stringify({
-                              project_id: projectId,
-                              action: "project.execute",
-                              allowed: true,
+                              expected_version: latest.version,
+                              instructions: latest.instructions,
+                              provider_connection: target.connection,
+                              model_id: target.model,
                             }),
                           });
                         })
                       }
                     >
-                      Grant project execution
+                      Update provider
                     </button>
-                  )}
+                    {projectId && (
+                      <button
+                        className="quiet"
+                        onClick={() =>
+                          act(async () => {
+                            await api(`/api/agents/${a.id}/grants`, {
+                              method: "POST",
+                              body: JSON.stringify({
+                                project_id: projectId,
+                                action: "project.execute",
+                                allowed: true,
+                              }),
+                            });
+                          })
+                        }
+                      >
+                        Grant project execution
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </section>
         )}
         {tab === "Approvals" && (
           <section className="panel">
             <h2>Pending approvals</h2>
-            <p className="muted">Review the exact synthetic artifact content before authorizing its immutable version.</p>
+            <p className="muted">
+              Review the exact synthetic artifact content before authorizing its
+              immutable version.
+            </p>
             {approvals.length === 0 ? (
               <p className="empty">Nothing needs approval.</p>
             ) : (
               approvals.map((a) => (
                 <div className="row" key={a.id}>
-                  <div><strong>{a.resource}</strong><small>{a.content}</small><small>SHA-256 proposal: {a.payload_hash}</small></div>
+                  <div>
+                    <strong>{a.resource}</strong>
+                    <small>{a.content}</small>
+                    <small>SHA-256 proposal: {a.payload_hash}</small>
+                  </div>
                   <div className="actions">
                     {([true, false] as const).map((approved) => (
-                      <button key={String(approved)} className="quiet" onClick={() => act(() => api(`/api/approvals/${a.id}/decision`, {
-                        method: "POST", body: JSON.stringify({ approved, payload_hash: a.payload_hash }),
-                      }))}>{approved ? "Approve artifact" : "Reject"}</button>
+                      <button
+                        key={String(approved)}
+                        className="quiet"
+                        onClick={() =>
+                          act(() =>
+                            api(`/api/approvals/${a.id}/decision`, {
+                              method: "POST",
+                              body: JSON.stringify({
+                                approved,
+                                payload_hash: a.payload_hash,
+                              }),
+                            }),
+                          )
+                        }
+                      >
+                        {approved ? "Approve artifact" : "Reject"}
+                      </button>
                     ))}
                   </div>
                 </div>
