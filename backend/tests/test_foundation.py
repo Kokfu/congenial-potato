@@ -106,7 +106,7 @@ def test_fixture_dispatch_is_outside_http_and_deduplicates(authenticated):
     assert submitted.status_code == 202, submitted.text
     execution_id = submitted.json()['execution_id']
     assert authenticated.get(f'/api/executions/{execution_id}').json()['status'] == 'queued'
-    DBOS(config={'name': 'workforce-test', 'system_database_url': 'postgresql://postgres:phase1fixture@127.0.0.1:55433/workforce_dbos_test', 'application_version': 'provider-boundary-v1'})
+    DBOS(config={'name': 'workforce-test', 'system_database_url': 'postgresql://postgres:phase1fixture@127.0.0.1:55433/workforce_dbos_test', 'application_version': 'usage-normalization-v1'})
     DBOS.launch()
     try:
         assert dispatch_once() == 1

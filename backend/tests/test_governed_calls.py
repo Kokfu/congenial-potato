@@ -11,7 +11,8 @@ from workforce.db import session_factory
 from workforce.models import (AgentConfigVersion, Approval, ArtifactVersion, AuditEvent, BudgetAccount,
                               BudgetReservation, DailyBudgetAccount, Execution, ModelCall, Outbox)
 from workforce.governed_call import governed_generate, price_for
-from workforce.providers import FakeAdapter, GenerationRequest, TextMessage
+from workforce.providers import (FakeAdapter, GenerationRequest, ProviderError,
+                                 ProviderErrorKind, TextMessage)
 from workforce.worker import dispatch_once
 
 
@@ -71,7 +72,7 @@ def test_price_config_rejects_mismatch_expiry_and_missing_daily_cap(authenticate
 def launch():
     DBOS(config={'name': 'workforce-test', 'system_database_url':
         'postgresql://postgres:phase1fixture@127.0.0.1:55433/workforce_dbos_test',
-        'application_version': 'call-limits-v1'})
+        'application_version': 'usage-normalization-v1'})
     DBOS.launch()
 
 
@@ -120,6 +121,28 @@ def test_timeout_retains_shared_hold_and_is_unknown(authenticated, monkeypatch):
         assert db.get(BudgetAccount, execution_id).reserved == hold.amount
         assert db.get(DailyBudgetAccount, hold.daily_day).reserved == hold.amount
         assert db.scalar(select(ModelCall).where(ModelCall.execution_id == execution_id)) is None
+
+
+def test_malformed_post_dispatch_response_keeps_charge_unknown(authenticated, monkeypatch):
+    execution_id = setup_priced_execution(authenticated, monkeypatch, 'fixture-alpha', 'alpha-text-v1')
+    def malformed(_self, _request):
+        raise ProviderError(ProviderErrorKind.MALFORMED_RESPONSE, 'Synthetic malformed response')
+    monkeypatch.setattr(FakeAdapter, 'generate', malformed)
+    launch()
+    try:
+        assert dispatch_once() == 1
+        assert DBOS.retrieve_workflow(f'execution:{execution_id}').get_result() == 'unknown'
+    finally:
+        DBOS.destroy()
+    with session_factory()() as db:
+        hold = db.scalar(select(BudgetReservation).where(
+            BudgetReservation.invocation_key == f'priced-model:{execution_id}'))
+        assert hold.status == 'unknown'
+        assert db.get(BudgetAccount, execution_id).reserved == hold.amount
+        assert db.get(DailyBudgetAccount, hold.daily_day).reserved == hold.amount
+        event = db.scalar(select(AuditEvent).where(AuditEvent.effect_key == f'model-error:{execution_id}'))
+        assert event.outcome == 'outcome_unknown'
+        assert event.detail['provider_error'] == 'malformed_response'
 
 
 def test_owner_reconciles_unknown_synthetic_charge_once(authenticated, monkeypatch):

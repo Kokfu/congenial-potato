@@ -60,7 +60,7 @@ def generate_step(execution_id: str) -> dict:
 
 
 @DBOS.step()
-def fail_model_step(execution_id: str, error_kind: str) -> str:
+def fail_model_step(execution_id: str, error_kind: str, provider_error: str | None = None) -> str:
     with session_factory()() as db:
         execution = db.execute(select(Execution).where(Execution.id == execution_id).with_for_update()).scalar_one()
         task = db.get(Task, execution.task_id)
@@ -71,7 +71,8 @@ def fail_model_step(execution_id: str, error_kind: str) -> str:
         execution.status = 'cancelled' if execution.cancelled else ('unknown' if error_kind == 'outcome_unknown' else 'failed')
         task.status = execution.status
         db.add(AuditEvent(actor=execution.agent_id, action='model.generate', resource=execution.id,
-                          outcome=error_kind, effect_key=f'model-error:{execution_id}'))
+                          outcome=error_kind, detail={'provider_error': provider_error} if provider_error else {},
+                          effect_key=f'model-error:{execution_id}'))
         db.commit()
         return execution.status
 
@@ -140,7 +141,7 @@ def run_fixture(execution_id: str) -> str:
         db.commit()
     result = generate_step(execution_id)
     if 'error' in result:
-        return fail_model_step(execution_id, result['error'])
+        return fail_model_step(execution_id, result['error'], result.get('provider_error'))
     return complete_step(execution_id, result)
 
 
@@ -160,7 +161,7 @@ def dispatch_once() -> int:
 
 def main() -> None:
     settings = get_settings()
-    DBOS(config={'name': 'workforce', 'system_database_url': settings.workflow_url, 'application_version': 'call-limits-v1', 'run_migrations': False, 'log_level': 'WARNING'})
+    DBOS(config={'name': 'workforce', 'system_database_url': settings.workflow_url, 'application_version': 'usage-normalization-v1', 'run_migrations': False, 'log_level': 'WARNING'})
     DBOS.launch()
     try:
         while True:

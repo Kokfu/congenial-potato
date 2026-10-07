@@ -29,7 +29,9 @@ def test_openai_sdk_326_response_and_catalog_are_normalized_offline():
         return httpx2.Response(200, json={'id': 'resp_fixture', 'object': 'response', 'created_at': 0,
             'status': 'completed', 'model': 'fixture-model', 'output': [{'id': 'msg_fixture', 'type': 'message',
             'role': 'assistant', 'status': 'completed', 'content': [{'type': 'output_text', 'text': 'Hello', 'annotations': []}]}],
-            'usage': {'input_tokens': 4, 'output_tokens': 2, 'total_tokens': 6}})
+            'usage': {'input_tokens': 4, 'output_tokens': 2, 'total_tokens': 6,
+                      'input_tokens_details': {'cached_tokens': 1, 'cache_write_tokens': 1},
+                      'output_tokens_details': {'reasoning_tokens': 1}}})
 
     client = openai.OpenAI(api_key='offline-fixture', max_retries=0,
                            http_client=httpx2.Client(transport=httpx2.MockTransport(handler)))
@@ -44,6 +46,8 @@ def test_openai_sdk_326_response_and_catalog_are_normalized_offline():
         'deadline_at': datetime.now(timezone.utc) + timedelta(seconds=20)}))
     assert (response.content, response.actual_model, response.provider_request_id) == ('Hello', 'fixture-model', 'resp_fixture')
     assert response.usage.input_tokens == 4 and response.usage.reported_cost_usd is None
+    assert (response.usage.cached_input_tokens, response.usage.cache_creation_input_tokens,
+            response.usage.reasoning_output_tokens) == (1, 1, 1)
     assert calls[1][1]['store'] is False
     assert calls[1][1]['input'][0]['role'] == 'system'
 
@@ -59,7 +63,9 @@ def test_anthropic_sdk_111_message_and_catalog_are_normalized_offline():
                 'has_more': False, 'first_id': 'fixture-model', 'last_id': 'fixture-model'})
         return httpx2.Response(200, json={'id': 'msg_fixture', 'type': 'message', 'role': 'assistant',
             'model': 'fixture-model', 'content': [{'type': 'text', 'text': 'Hello'}],
-            'stop_reason': 'end_turn', 'stop_sequence': None, 'usage': {'input_tokens': 4, 'output_tokens': 2}})
+            'stop_reason': 'end_turn', 'stop_sequence': None, 'usage': {
+                'input_tokens': 4, 'cache_creation_input_tokens': 2, 'cache_read_input_tokens': 3,
+                'output_tokens': 2, 'output_tokens_details': {'thinking_tokens': 1}}})
 
     client = anthropic.Anthropic(api_key='offline-fixture', max_retries=0,
                                  http_client=httpx2.Client(transport=httpx2.MockTransport(handler)))
@@ -68,7 +74,10 @@ def test_anthropic_sdk_111_message_and_catalog_are_normalized_offline():
     response = adapter.generate(REQUEST.model_copy(update={
         'deadline_at': datetime.now(timezone.utc) + timedelta(seconds=20)}))
     assert (response.content, response.actual_model, response.provider_request_id) == ('Hello', 'fixture-model', 'msg_fixture')
-    assert response.usage.output_tokens == 2 and response.usage.reported_cost_usd is None
+    assert (response.usage.input_tokens, response.usage.output_tokens,
+            response.usage.cache_creation_input_tokens, response.usage.cached_input_tokens,
+            response.usage.reasoning_output_tokens) == (9, 2, 2, 3, 1)
+    assert response.usage.reported_cost_usd is None
     assert calls[1][1]['system'] == 'Stay concise.'
     assert calls[1][1]['messages'][0]['role'] == 'user'
 

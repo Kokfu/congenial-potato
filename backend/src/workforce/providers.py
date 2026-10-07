@@ -70,8 +70,13 @@ class GenerationRequest(BaseModel):
 
 
 class Usage(BaseModel):
+    # input_tokens is the inclusive count used by cost calculation. Provider
+    # cache/reasoning breakdowns are recorded separately for provenance.
     input_tokens: int | None = Field(default=None, ge=0)
     output_tokens: int | None = Field(default=None, ge=0)
+    cached_input_tokens: int | None = Field(default=None, ge=0)
+    cache_creation_input_tokens: int | None = Field(default=None, ge=0)
+    reasoning_output_tokens: int | None = Field(default=None, ge=0)
     reported_cost_usd: Decimal | None = Field(default=None, ge=0)
 
 
