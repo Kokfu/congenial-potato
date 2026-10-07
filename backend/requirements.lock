@@ -6,8 +6,14 @@ annotated-doc==0.0.5
     # via fastapi
 annotated-types==0.8.0
     # via pydantic
+anthropic==1.11.0
+    # via -r requirements.in
 anyio==4.15.1
-    # via starlette
+    # via
+    #   anthropic
+    #   httpx2
+    #   openai
+    #   starlette
 argon2-cffi==25.1.0
     # via -r requirements.in
 argon2-cffi-bindings==26.1.0
@@ -20,18 +26,36 @@ click==8.5.0
     #   uvicorn
 dbos==3.2.0
     # via -r requirements.in
+docstring-parser==0.18.0
+    # via anthropic
 fastapi==0.142.2
     # via -r requirements.in
 greenlet==3.5.6
     # via sqlalchemy
 h11==0.16.0
-    # via uvicorn
+    # via
+    #   httpcore2
+    #   uvicorn
+httpcore2==2.13.1
+    # via httpx2
+httpx2==2.13.1
+    # via
+    #   anthropic
+    #   openai
 idna==3.20
-    # via anyio
+    # via
+    #   anyio
+    #   httpx2
+jiter==0.17.0
+    # via
+    #   anthropic
+    #   openai
 mako==1.4.3
     # via alembic
 markupsafe==3.0.4
     # via mako
+openai==3.26.0
+    # via -r requirements.in
 opentelemetry-api==1.45.1
     # via fastapi
 psycopg==3.3.6
@@ -44,7 +68,9 @@ pycparser==3.0
     # via cffi
 pydantic==2.13.5
     # via
+    #   anthropic
     #   fastapi
+    #   openai
     #   pydantic-settings
 pydantic-core==2.46.5
     # via pydantic
@@ -58,6 +84,10 @@ pyyaml==6.0.3
     # via dbos
 six==1.17.0
     # via python-dateutil
+sniffio==1.3.1
+    # via
+    #   anthropic
+    #   openai
 sqlalchemy==2.1.3
     # via
     #   -r requirements.in
@@ -65,11 +95,18 @@ sqlalchemy==2.1.3
     #   dbos
 starlette==1.7.0
     # via fastapi
+truststore==0.10.4
+    # via
+    #   httpcore2
+    #   httpx2
 typing-extensions==4.16.0
     # via
     #   alembic
+    #   anthropic
     #   anyio
     #   fastapi
+    #   httpx2
+    #   openai
     #   opentelemetry-api
     #   psycopg
     #   pydantic
