@@ -30,14 +30,42 @@ def setup_priced_execution(authenticated, monkeypatch, connection, model):
         observed_at=datetime.now(timezone.utc), expires_at=datetime.now(timezone.utc) + timedelta(days=1),
         max_input_tokens=500, max_output_tokens=128,
         input_usd_per_million=Decimal('1'), output_usd_per_million=Decimal('2'))
-    with session_factory()() as db:
-        config = db.scalar(select(AgentConfigVersion).where(AgentConfigVersion.agent_id == agent['id']))
-        config.config = {'price_envelope': envelope.model_dump(mode='json')}
-        db.commit()
+    update = authenticated.put(f"/api/agents/{agent['id']}/config", json={
+        'expected_version': 1, 'instructions': 'Synthetic only',
+        'provider_connection': connection, 'model_id': model,
+        'price_envelope': envelope.model_dump(mode='json')}, headers=headers)
+    assert update.status_code == 200, update.text
+    history = authenticated.get(f"/api/agents/{agent['id']}/config").json()['versions']
+    assert len(history) == 2 and history[1]['price_envelope'] == envelope.model_dump(mode='json')
     response = authenticated.post(f"/api/tasks/{task['id']}/dispatch", json={
         'agent_id': agent['id'], 'root_cap': '1.0'}, headers=headers)
     assert response.status_code == 202, response.text
     return response.json()['execution_id']
+
+
+def test_price_config_rejects_mismatch_expiry_and_missing_daily_cap(authenticated, monkeypatch):
+    headers = {'Origin': 'http://localhost:8080', 'X-CSRF-Token': authenticated.cookies['workforce_csrf']}
+    agent = authenticated.post('/api/agents', json={'name': 'Config fixture', 'role': 'specialist',
+        'instructions': 'Synthetic', 'provider_connection': 'fixture-alpha',
+        'model_id': 'alpha-text-v1'}, headers=headers).json()
+    envelope = PriceEnvelope(provider_connection='fixture-alpha', model_id='alpha-text-v1',
+        source='synthetic-test', observed_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+        max_input_tokens=500, max_output_tokens=128,
+        input_usd_per_million=Decimal('1'), output_usd_per_million=Decimal('2'))
+    payload = {'expected_version': 1, 'instructions': 'Synthetic', 'provider_connection': 'fixture-alpha',
+               'model_id': 'alpha-text-v1', 'price_envelope': envelope.model_dump(mode='json')}
+    endpoint = f"/api/agents/{agent['id']}/config"
+    assert authenticated.put(endpoint, json=payload, headers=headers).status_code == 422
+    monkeypatch.setenv('DAILY_CAP_USD', '1.0')
+    get_settings.cache_clear()
+    assert authenticated.put(endpoint, json={**payload, 'price_envelope': {
+        **payload['price_envelope'], 'model_id': 'different'}}, headers=headers).status_code == 422
+    assert authenticated.put(endpoint, json={**payload, 'price_envelope': {
+        **payload['price_envelope'], 'expires_at': (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()}},
+        headers=headers).status_code == 422
+    assert authenticated.put(endpoint, json=payload, headers=headers).status_code == 200
+    assert authenticated.put(endpoint, json=payload, headers=headers).status_code == 409
 
 
 def launch():
