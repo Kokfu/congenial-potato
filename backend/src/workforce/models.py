@@ -45,6 +45,7 @@ class Project(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     name: Mapped[str] = mapped_column(String(160))
     objective: Mapped[str] = mapped_column(Text, default='')
+    plan_revision: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
@@ -82,10 +83,12 @@ class AgentProjectGrant(Base):
 
 class Task(Base):
     __tablename__ = 'tasks'
+    __table_args__ = (UniqueConstraint('project_id', 'work_key', name='uq_task_project_work_key'),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'))
     parent_id: Mapped[str | None] = mapped_column(ForeignKey('tasks.id'))
     title: Mapped[str] = mapped_column(String(240))
+    work_key: Mapped[str | None] = mapped_column(String(100))
     status: Mapped[str] = mapped_column(String(30), default='backlog')
     revision: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -112,6 +115,22 @@ class TaskAssignment(Base):
     task_id: Mapped[str] = mapped_column(ForeignKey('tasks.id'))
     agent_id: Mapped[str] = mapped_column(ForeignKey('agents.id'))
     assigned_by: Mapped[str] = mapped_column(ForeignKey('owners.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class PlanProposal(Base):
+    __tablename__ = 'plan_proposals'
+    __table_args__ = (UniqueConstraint('source_execution_id', 'proposal_key',
+                                       name='uq_plan_source_key'),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'))
+    source_execution_id: Mapped[str] = mapped_column(ForeignKey('executions.id'))
+    submitted_by: Mapped[str] = mapped_column(ForeignKey('owners.id'))
+    proposal_key: Mapped[str] = mapped_column(String(100))
+    expected_revision: Mapped[int] = mapped_column(Integer)
+    payload: Mapped[dict] = mapped_column(JSON)
+    payload_hash: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(30), default='proposed')
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 

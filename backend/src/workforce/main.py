@@ -90,7 +90,8 @@ def logout(response: Response, session: OwnerSession = Depends(require_csrf), db
 @app.get('/api/projects')
 def list_projects(_: OwnerSession = Depends(current_session), db: Session = Depends(db_session)):
     rows = db.scalars(select(Project).order_by(Project.created_at, Project.id)).all()
-    return [{'id': row.id, 'name': row.name, 'objective': row.objective} for row in rows]
+    return [{'id': row.id, 'name': row.name, 'objective': row.objective,
+             'plan_revision': row.plan_revision} for row in rows]
 
 
 @app.post('/api/projects', status_code=201)
@@ -100,7 +101,8 @@ def create_project(data: ProjectInput, session: OwnerSession = Depends(require_c
     db.flush()
     db.add(AuditEvent(actor=session.owner_id, action='project.create', resource=row.id, outcome='allowed'))
     db.commit()
-    return {'id': row.id, 'name': row.name, 'objective': row.objective}
+    return {'id': row.id, 'name': row.name, 'objective': row.objective,
+            'plan_revision': row.plan_revision}
 
 
 @app.get('/api/agents')
@@ -310,3 +312,5 @@ from .cost_reconciliation import router as cost_reconciliation_router  # noqa: E
 app.include_router(cost_reconciliation_router)
 from .task_api import router as task_router  # noqa: E402
 app.include_router(task_router)
+from .plan_api import router as plan_router  # noqa: E402
+app.include_router(plan_router)
