@@ -1,5 +1,6 @@
 """Offline SDK contract tests: every provider request is intercepted in memory."""
 import json
+import os
 from datetime import datetime, timedelta, timezone
 
 import anthropic
@@ -98,6 +99,44 @@ def test_native_credentials_require_private_absolute_file(tmp_path):
     assert AnthropicTextAdapter({}, secret_file=secret).health() == 'configured_no_network_probe'
     with pytest.raises(ValueError, match='absolute'):
         OpenAITextAdapter({}, secret_file=type(secret)('relative-key'))
+
+
+def test_native_secret_reader_rejects_links_special_files_and_oversize(tmp_path):
+    secret = tmp_path / 'private-key'
+    secret.write_text('synthetic-private-key\n')
+    secret.chmod(0o600)
+    link = tmp_path / 'link'
+    link.symlink_to(secret)
+    with pytest.raises(ValueError, match='unavailable') as linked:
+        OpenAITextAdapter({}, secret_file=link)
+    assert 'synthetic-private-key' not in str(linked.value)
+    with pytest.raises(ValueError, match='regular file'):
+        AnthropicTextAdapter({}, secret_file=tmp_path)
+    pipe = tmp_path / 'pipe'
+    os.mkfifo(pipe, 0o600)
+    with pytest.raises(ValueError, match='regular file'):
+        OpenAITextAdapter({}, secret_file=pipe)
+    secret.write_bytes(b'x' * 8193)
+    with pytest.raises(ValueError, match='too large'):
+        OpenAITextAdapter({}, secret_file=secret)
+
+
+def test_native_secret_reader_accepts_one_line_only(tmp_path):
+    secret = tmp_path / 'private-key'
+    secret.write_text('synthetic-private-key\nnext-line')
+    secret.chmod(0o600)
+    with pytest.raises(ValueError, match='one nonempty line') as multiline:
+        AnthropicTextAdapter({}, secret_file=secret)
+    assert 'synthetic-private-key' not in str(multiline.value)
+    secret.write_bytes(b'synthetic\x00key')
+    with pytest.raises(ValueError, match='one nonempty line'):
+        OpenAITextAdapter({}, secret_file=secret)
+    secret.write_bytes(b'\xff')
+    with pytest.raises(ValueError, match='UTF-8'):
+        OpenAITextAdapter({}, secret_file=secret)
+    secret.write_text('synthetic-private-key\n')
+    secret.chmod(0o400)
+    assert OpenAITextAdapter({}, secret_file=secret).health() == 'configured_no_network_probe'
 
 
 def test_anthropic_auth_failure_and_native_streaming_fail_closed():

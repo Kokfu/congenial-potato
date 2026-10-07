@@ -16,6 +16,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 8. [Call deadlines and cancellation](research/call-limits-validation.md)
 9. [Owner price configuration](research/price-config-validation.md)
 10. [Unknown synthetic charge reconciliation](research/unknown-cost-reconciliation.md)
+11. [Credential file validation](research/credential-file-validation.md)
 
 ## Architecture
 

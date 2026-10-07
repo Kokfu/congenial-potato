@@ -1,7 +1,9 @@
 """Text-only native SDK adapters. Deliberately unregistered until live budget gates exist."""
 from collections.abc import Iterator
 from datetime import datetime, timezone
+import os
 from pathlib import Path
+import stat
 
 import anthropic
 import openai
@@ -14,12 +16,39 @@ from .providers import (Capabilities, CatalogModel, CatalogSnapshot, GenerationR
 def _read_secret(path: Path | None) -> str:
     if path is None or not path.is_absolute():
         raise ValueError('An absolute private secret file reference is required')
-    if path.stat().st_mode & 0o077:
-        raise ValueError('Provider secret file must not be group/world readable')
-    value = path.read_text().rstrip('\n')
-    if not value:
-        raise ValueError('Provider secret file is empty')
-    return value
+    if not hasattr(os, 'O_NOFOLLOW'):
+        raise ValueError('Provider secret file requires no-follow file opening')
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NONBLOCK | os.O_NOFOLLOW)
+    except (OSError, ValueError):
+        raise ValueError('Provider secret file is unavailable') from None
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError('Provider secret must be a regular file')
+        if info.st_uid not in (0, os.getuid()):
+            raise ValueError('Provider secret file owner is not trusted')
+        if info.st_mode & 0o077:
+            raise ValueError('Provider secret file must not be group/world readable')
+        if info.st_size > 8192:
+            raise ValueError('Provider secret file is too large')
+        chunks = bytearray()
+        while len(chunks) <= 8192:
+            part = os.read(fd, 8193 - len(chunks))
+            if not part:
+                break
+            chunks.extend(part)
+        if len(chunks) > 8192:
+            raise ValueError('Provider secret file is too large')
+        raw = bytes(chunks).removesuffix(b'\n')
+        if not raw.strip() or b'\n' in raw or b'\r' in raw or b'\x00' in raw:
+            raise ValueError('Provider secret file must contain one nonempty line')
+        try:
+            return raw.decode('utf-8')
+        except UnicodeDecodeError:
+            raise ValueError('Provider secret file is not UTF-8') from None
+    finally:
+        os.close(fd)
 
 
 def _api_error(error: Exception, sdk: str) -> ProviderError:
