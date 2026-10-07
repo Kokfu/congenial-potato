@@ -105,6 +105,16 @@ class TaskDependency(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class TaskAssignment(Base):
+    __tablename__ = 'task_assignments'
+    __table_args__ = (UniqueConstraint('task_id', name='uq_task_assignment_task'),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    task_id: Mapped[str] = mapped_column(ForeignKey('tasks.id'))
+    agent_id: Mapped[str] = mapped_column(ForeignKey('agents.id'))
+    assigned_by: Mapped[str] = mapped_column(ForeignKey('owners.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class Execution(Base):
     __tablename__ = 'executions'
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
