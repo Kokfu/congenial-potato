@@ -136,10 +136,15 @@ class PlanProposal(Base):
 
 class Execution(Base):
     __tablename__ = 'executions'
+    __table_args__ = (UniqueConstraint('parent_id', 'delegation_key', name='uq_execution_delegation_key'),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     task_id: Mapped[str] = mapped_column(ForeignKey('tasks.id'))
     agent_id: Mapped[str] = mapped_column(ForeignKey('agents.id'))
     config_version_id: Mapped[str] = mapped_column(ForeignKey('agent_config_versions.id'))
+    parent_id: Mapped[str | None] = mapped_column(ForeignKey('executions.id'))
+    delegation_key: Mapped[str | None] = mapped_column(String(100))
+    delegation_hash: Mapped[str | None] = mapped_column(String(64))
+    depth: Mapped[int] = mapped_column(Integer, default=0)
     root_id: Mapped[str] = mapped_column(String(36))
     workflow_id: Mapped[str] = mapped_column(String(160), unique=True)
     status: Mapped[str] = mapped_column(String(30), default='queued')
