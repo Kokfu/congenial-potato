@@ -5,9 +5,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .db import db_session
+from .budgets import PriceEnvelope
+from .config import get_settings
 from .models import Agent, AgentConfigVersion, AuditEvent, Execution, ModelCall, OwnerSession
 from .providers import ProviderError, registry
 from .security import current_session, require_csrf
+from .services import AccessDenied
 
 router = APIRouter()
 
@@ -28,6 +31,7 @@ class ConfigUpdate(BaseModel):
     instructions: str = Field(min_length=1, max_length=20000)
     provider_connection: str = Field(min_length=1, max_length=120)
     model_id: str = Field(min_length=1, max_length=160)
+    price_envelope: PriceEnvelope | None = None
 
 
 @router.get('/api/provider-connections')
@@ -45,6 +49,7 @@ def get_agent_config(agent_id: str, _: OwnerSession = Depends(current_session), 
     return {'agent_id': agent_id, 'versions': [
         {'id': row.id, 'version': row.version, 'instructions': row.instructions,
          'provider_connection': row.provider_connection, 'model_id': row.model_id,
+         'price_envelope': (row.config or {}).get('price_envelope'),
          'created_at': row.created_at} for row in rows]}
 
 
@@ -59,17 +64,34 @@ def update_agent_config(agent_id: str, data: ConfigUpdate, session: OwnerSession
     if current is None or current.version != data.expected_version:
         raise HTTPException(409, 'Agent config version changed')
     try:
-        registry.get(data.provider_connection).describe_capabilities(data.model_id)
+        capabilities = registry.get(data.provider_connection).describe_capabilities(data.model_id)
     except ProviderError as exc:
         raise HTTPException(422, str(exc)) from exc
+    price = data.price_envelope
+    if price is not None:
+        if price.provider_connection != data.provider_connection or price.model_id != data.model_id:
+            raise HTTPException(422, 'Price envelope must match the selected connection and model')
+        if (price.max_input_tokens > capabilities.max_input_tokens or
+                price.max_output_tokens > capabilities.max_output_tokens or
+                price.max_output_tokens < 128):
+            raise HTTPException(422, 'Price envelope token bounds do not support the selected model request')
+        try:
+            upper = price.upper_bound()
+        except AccessDenied as exc:
+            raise HTTPException(422, 'Price envelope has expired or has no price') from exc
+        daily_cap = get_settings().daily_cap_usd
+        if daily_cap is None or daily_cap < upper:
+            raise HTTPException(422, 'Daily cap is unavailable or below the price upper bound')
     revision = AgentConfigVersion(agent_id=agent.id, version=current.version + 1,
                                   instructions=data.instructions, provider_connection=data.provider_connection,
-                                  model_id=data.model_id)
+                                  model_id=data.model_id,
+                                  config={'price_envelope': price.model_dump(mode='json')} if price else {})
     db.add(revision)
     db.flush()
     db.add(AuditEvent(actor=session.owner_id, action='agent.config.update', resource=agent.id,
                       outcome='allowed', detail={'from_version': current.version, 'to_version': revision.version,
                                                  'provider_connection': revision.provider_connection,
-                                                 'model_id': revision.model_id}))
+                                                 'model_id': revision.model_id,
+                                                 'priced': price is not None}))
     db.commit()
     return {'agent_id': agent.id, 'config_version_id': revision.id, 'version': revision.version}

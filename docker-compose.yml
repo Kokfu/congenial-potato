@@ -31,6 +31,8 @@ services:
       INITIAL_ADMIN_PASSWORD_FILE: /run/secrets/initial_admin_password
       ALLOWED_ORIGIN: ${PUBLIC_BASE_URL:-http://localhost:8080}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      DAILY_CAP_USD: ${DAILY_CAP_USD:-0}
+      MODEL_CALL_TIMEOUT_SECONDS: ${MODEL_CALL_TIMEOUT_SECONDS:-20}
     secrets: [db_password, initial_admin_password]
     tmpfs: [/tmp]
     depends_on:
