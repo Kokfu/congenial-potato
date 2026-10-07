@@ -1,7 +1,7 @@
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, JSON
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 from .db import Base
 
@@ -88,6 +88,20 @@ class Task(Base):
     title: Mapped[str] = mapped_column(String(240))
     status: Mapped[str] = mapped_column(String(30), default='backlog')
     revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class TaskDependency(Base):
+    __tablename__ = 'task_dependencies'
+    __table_args__ = (
+        UniqueConstraint('prerequisite_id', 'dependent_id'),
+        CheckConstraint('prerequisite_id <> dependent_id', name='ck_task_dependency_distinct'),
+        Index('ix_task_dependencies_dependent_id', 'dependent_id'),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'))
+    prerequisite_id: Mapped[str] = mapped_column(ForeignKey('tasks.id'))
+    dependent_id: Mapped[str] = mapped_column(ForeignKey('tasks.id'))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 

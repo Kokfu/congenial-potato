@@ -19,6 +19,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 11. [Credential file validation](research/credential-file-validation.md)
 12. [Usage normalization and uncertain response cost](research/usage-normalization-validation.md)
 13. [Offline native SDK worker validation](research/offline-native-worker-validation.md)
+14. [Phase 3 task graph foundation](research/task-graph-validation.md)
 
 ## Architecture
 
@@ -42,4 +43,4 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 
 ## Current coding task
 
-Follow [progress.md](../progress.md) task by task. Complete Phase 2's native provider boundary with verified capability manifests, budget enforcement, and explicit live activation before any real request. Keep paid calls and production credentials disabled during offline validation.
+Follow [progress.md](../progress.md) task by task. Phase 3 uses fake providers while the Phase 2 live activation gate remains open. Keep paid calls and production credentials disabled during fixture validation.
