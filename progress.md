@@ -75,14 +75,15 @@ Updated: 2026-10-08. This is the execution ledger for the approved AI workforce 
 ## Phase 3 tasks
 
 - [x] **3.1 Scoped prerequisite graph.** Persist task dependency edges with a migration. Serialize graph edits, reject cycles/cross-project/late edges, deduplicate repeats and block dispatch until prerequisites complete. Evidence: `docs/research/task-graph-validation.md`.
-- [ ] **3.2 Human task acceptance and assignment.** Add explicit reviewed-task acceptance and bounded task assignment records; keep acceptance and execution attempts distinct.
+- [x] **3.2 Human task acceptance and assignment.** Add explicit reviewed-task acceptance and one recorded executor per task; keep acceptance and execution attempts distinct. Evidence: `docs/research/task-acceptance-validation.md`.
 - [ ] **3.3 Validated Manager plan proposals.** Persist typed proposals and validate task count, dependencies, project scope, assignees, duplicate work keys and revisions before admission.
 - [ ] **3.4 Governed delegation.** Admit Manager-mediated and direct specialist delegation through one service, with project ceilings, child/root budgets, depth, children and cycle limits.
 - [ ] **3.5 Verified messages and cancellation tree.** Persist sender-bound project/task messages with correlation, cap automatic replies, and cancel pending child work without later effects.
 
 ## Verified Phase 3 fixture evidence
 
-- Task graph: 37 backend tests passed. Two new PostgreSQL tests covered same-project prerequisite admission, cycle/cross-project/self-link denial, duplicate idempotency, blocking dispatch until a prerequisite is completed, and two competing opposite edges leaving one valid edge. Alembic upgraded the disposable database and reported no pending metadata operations. The backend image built; Compose reached `d07f414db7a2`, API/worker restarted and fixture smoke passed. Human task acceptance and agent delegation are not yet implemented.
+- Task graph: 37 backend tests passed. Two new PostgreSQL tests covered same-project prerequisite admission, cycle/cross-project/self-link denial, duplicate idempotency, blocking dispatch until a prerequisite is completed, and two competing opposite edges leaving one valid edge. Alembic upgraded the disposable database and reported no pending metadata operations. The backend image built; Compose reached `d07f414db7a2`, API/worker restarted and fixture smoke passed.
+- Task acceptance: 38 backend tests passed, including a synthetic DBOS execution, artifact approval/application, owner acceptance and now unblocked dependent dispatch. Assignment requires an active agent and grant; repeats do not create another row or audit event. Alembic upgraded to `e3a9c2704f1b` with no pending metadata operations. The non-root backend image built; Compose migrated and restarted API/worker, and fixture smoke passed. Manager plan proposals and delegation remain open.
 
 ## Working rules and evidence
 

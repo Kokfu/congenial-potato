@@ -14,6 +14,7 @@ from .models import Agent, AgentConfigVersion, AgentProjectGrant, Approval, Arti
 from .security import clear_auth_cookies, current_session, login, require_csrf, require_origin, set_auth_cookies
 from .services import AccessDenied, authorize_agent_project
 from .task_graph import dependencies_satisfied
+from .task_assignment import AssignmentError, assign_executor
 from .artifacts import proposal_valid
 from . import providers
 from .providers import ProviderError
@@ -199,6 +200,13 @@ def dispatch(task_id: str, data: DispatchInput, session: OwnerSession = Depends(
     config = db.scalar(select(AgentConfigVersion).where(AgentConfigVersion.agent_id == data.agent_id).order_by(AgentConfigVersion.version.desc()).limit(1))
     if config is None:
         raise HTTPException(409, 'Agent has no configuration')
+    try:
+        assignment, created = assign_executor(db, task, data.agent_id, session.owner_id)
+    except AssignmentError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    if created:
+        db.add(AuditEvent(actor=session.owner_id, action='task.assign', resource=task.id,
+                          outcome='allowed', detail={'agent_id': assignment.agent_id}))
     execution = Execution(task_id=task.id, agent_id=data.agent_id, config_version_id=config.id, root_id='', workflow_id='')
     db.add(execution)
     db.flush()
@@ -208,6 +216,7 @@ def dispatch(task_id: str, data: DispatchInput, session: OwnerSession = Depends(
     db.add(Outbox(kind='execution.dispatch', idempotency_key=execution.workflow_id, payload={'execution_id': execution.id}))
     db.add(AuditEvent(actor=session.owner_id, action='execution.dispatch', resource=execution.id, outcome='allowed'))
     task.status = 'queued'
+    task.revision += 1
     db.commit()
     return {'execution_id': execution.id, 'status': execution.status}
 
