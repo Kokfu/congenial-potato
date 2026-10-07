@@ -9,6 +9,7 @@ from .models import AgentConfigVersion, AuditEvent, BudgetAccount, BudgetReserva
 from .services import AccessDenied, authorize_agent_project, reserve_budget
 from .artifacts import apply_approved_artifacts, propose_fixture_artifact
 from .providers import GenerationRequest, GenerationResponse, ProviderError, TextMessage, registry
+from .governed_call import governed_generate, price_for
 
 RESERVATION = Decimal('0.010000')
 
@@ -37,11 +38,22 @@ def generate_step(execution_id: str) -> dict:
                                     messages=(TextMessage(role='system', trust_origin='human', text=config.instructions),
                                               TextMessage(role='user', trust_origin='human', text=task.title)),
                                     max_output_tokens=128)
+        connection = config.provider_connection
         try:
-            response = registry.get(config.provider_connection).generate(request)
-        except ProviderError as exc:
-            return {'error': exc.kind.value, 'retryable': exc.retryable}
-        return response.model_dump(mode='json')
+            price = price_for(config)
+        except (AccessDenied, ValueError):
+            return {'error': 'policy_denied', 'retryable': False}
+    # Release the policy-read transaction before the priced path rechecks and
+    # locks the grant; holding both sessions would deadlock on the same row.
+    try:
+        if price is not None:
+            return governed_generate(execution_id, request, price)
+        response = registry.get(connection).generate(request)
+    except ProviderError as exc:
+        return {'error': exc.kind.value, 'retryable': exc.retryable}
+    except (AccessDenied, ValueError):
+        return {'error': 'policy_denied', 'retryable': False}
+    return response.model_dump(mode='json')
 
 
 @DBOS.step()
@@ -50,10 +62,10 @@ def fail_model_step(execution_id: str, error_kind: str) -> str:
         execution = db.execute(select(Execution).where(Execution.id == execution_id).with_for_update()).scalar_one()
         task = db.get(Task, execution.task_id)
         release_reservation(db, execution)
-        if execution.status in ('failed', 'cancelled'):
+        if execution.status in ('failed', 'cancelled', 'unknown'):
             db.commit()
             return execution.status
-        execution.status = 'cancelled' if execution.cancelled else 'failed'
+        execution.status = 'cancelled' if execution.cancelled else ('unknown' if error_kind == 'outcome_unknown' else 'failed')
         task.status = execution.status
         db.add(AuditEvent(actor=execution.agent_id, action='model.generate', resource=execution.id,
                           outcome=error_kind, effect_key=f'model-error:{execution_id}'))
@@ -111,7 +123,9 @@ def run_fixture(execution_id: str) -> str:
             return 'cancelled'
         try:
             authorize_agent_project(db, execution.agent_id, task.project_id, 'project.execute')
-            reserve_budget(db, execution.root_id, f'model:{execution_id}', RESERVATION)
+            config = db.get(AgentConfigVersion, execution.config_version_id)
+            if price_for(config) is None:
+                reserve_budget(db, execution.root_id, f'model:{execution_id}', RESERVATION)
         except AccessDenied:
             execution.status = 'failed'
             task.status = 'failed'
@@ -143,7 +157,7 @@ def dispatch_once() -> int:
 
 def main() -> None:
     settings = get_settings()
-    DBOS(config={'name': 'workforce', 'system_database_url': settings.workflow_url, 'application_version': 'provider-boundary-v1', 'run_migrations': False, 'log_level': 'WARNING'})
+    DBOS(config={'name': 'workforce', 'system_database_url': settings.workflow_url, 'application_version': 'governed-cost-v1', 'run_migrations': False, 'log_level': 'WARNING'})
     DBOS.launch()
     try:
         while True:

@@ -91,7 +91,7 @@ def settle_shared_cost(db: Session, key: str, actual: Decimal | None) -> BudgetR
         if actual is None or hold.actual != money(actual):
             raise ValueError('Cost settlement changed after recording')
         return hold
-    if hold.status not in ('reserved', 'unknown'):
+    if hold.status not in ('reserved', 'calling', 'unknown'):
         raise ValueError('Cost hold is not open')
     if actual is None:
         hold.status = 'unknown'
