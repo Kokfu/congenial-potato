@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     session_cookie_secure: bool = True
     allowed_origin: str = 'http://localhost:8080'
     session_hours: int = 24
+    artifact_dir: Path = Path('/var/lib/workforce/artifacts')
 
     def database_url(self, name: str) -> str:
         if not self.db_password_file:

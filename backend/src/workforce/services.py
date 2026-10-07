@@ -13,7 +13,7 @@ def authorize_agent_project(db: Session, agent_id: str, project_id: str, action:
         AgentProjectGrant.agent_id == agent_id,
         AgentProjectGrant.project_id == project_id,
         AgentProjectGrant.action == action,
-    )).all()
+    ).with_for_update()).all()
     if not grants or any(not grant.allowed for grant in grants):
         raise AccessDenied('Project access denied')
 

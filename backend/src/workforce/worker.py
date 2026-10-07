@@ -7,6 +7,7 @@ from .config import get_settings
 from .db import session_factory
 from .models import AgentConfigVersion, AuditEvent, BudgetAccount, BudgetReservation, Execution, ModelCall, Outbox, Task, now
 from .services import AccessDenied, authorize_agent_project, reserve_budget
+from .artifacts import apply_approved_artifacts, propose_fixture_artifact
 
 RESERVATION = Decimal('0.010000')
 
@@ -49,6 +50,7 @@ def complete_step(execution_id: str, result: str) -> str:
         config = db.get(AgentConfigVersion, execution.config_version_id)
         if db.scalar(select(ModelCall.id).where(ModelCall.execution_id == execution_id)) is None:
             db.add(ModelCall(execution_id=execution_id, provider='fixture', model_id=config.model_id, result=result))
+        propose_fixture_artifact(db, execution, result)
         release_reservation(db, execution)
         task.status = 'review'
         execution.status = 'succeeded'
@@ -105,6 +107,7 @@ def main() -> None:
     try:
         while True:
             dispatch_once()
+            apply_approved_artifacts()
             time.sleep(0.5)
     finally:
         DBOS.destroy()

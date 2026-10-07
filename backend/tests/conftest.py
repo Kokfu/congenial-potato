@@ -21,6 +21,7 @@ def clean_database(tmp_path: Path, monkeypatch):
     secret = tmp_path / 'password'
     secret.write_text('synthetic-strong-password-123\n')
     monkeypatch.setenv('INITIAL_ADMIN_PASSWORD_FILE', str(secret))
+    monkeypatch.setenv('ARTIFACT_DIR', str(tmp_path / 'artifacts'))
     get_settings.cache_clear()
     with session_factory()() as db:
         bootstrap_owner(db, secret)

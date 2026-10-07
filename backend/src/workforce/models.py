@@ -120,6 +120,8 @@ class Approval(Base):
     execution_id: Mapped[str] = mapped_column(ForeignKey('executions.id'))
     invocation_key: Mapped[str] = mapped_column(String(160), unique=True)
     payload_hash: Mapped[str] = mapped_column(String(64))
+    decision_payload_hash: Mapped[str | None] = mapped_column(String(64))
+    payload: Mapped[dict] = mapped_column(JSON)
     schema_hash: Mapped[str] = mapped_column(String(64))
     resource: Mapped[str] = mapped_column(String(240))
     target_version: Mapped[str | None] = mapped_column(String(120))

@@ -12,7 +12,7 @@ type Event = {
   outcome: string;
   created_at: string;
 };
-type Approval = { id: string; resource: string; status: string };
+type Approval = { id: string; resource: string; status: string; payload_hash: string; content: string };
 type Tab = "Projects" | "Agents" | "Approvals" | "Activity" | "Settings";
 const tabs: Tab[] = ["Projects", "Agents", "Approvals", "Activity", "Settings"];
 const csrf = () =>
@@ -374,16 +374,20 @@ function App() {
         {tab === "Approvals" && (
           <section className="panel">
             <h2>Pending approvals</h2>
-            <p className="muted">
-              Exact-effect approvals arrive in a later phase.
-            </p>
+            <p className="muted">Review the exact synthetic artifact content before authorizing its immutable version.</p>
             {approvals.length === 0 ? (
               <p className="empty">Nothing needs approval.</p>
             ) : (
               approvals.map((a) => (
                 <div className="row" key={a.id}>
-                  {a.resource}
-                  <span className="badge">{a.status}</span>
+                  <div><strong>{a.resource}</strong><small>{a.content}</small><small>SHA-256 proposal: {a.payload_hash}</small></div>
+                  <div className="actions">
+                    {([true, false] as const).map((approved) => (
+                      <button key={String(approved)} className="quiet" onClick={() => act(() => api(`/api/approvals/${a.id}/decision`, {
+                        method: "POST", body: JSON.stringify({ approved, payload_hash: a.payload_hash }),
+                      }))}>{approved ? "Approve artifact" : "Reject"}</button>
+                    ))}
+                  </div>
                 </div>
               ))
             )}

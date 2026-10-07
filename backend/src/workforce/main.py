@@ -1,4 +1,7 @@
 from decimal import Decimal
+from pathlib import Path
+import hashlib
+from typing import Literal
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -8,9 +11,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 from .db import db_session
-from .models import Agent, AgentConfigVersion, AgentProjectGrant, AuditEvent, BudgetAccount, Execution, Outbox, OwnerSession, Project, Task, now
+from .models import Agent, AgentConfigVersion, AgentProjectGrant, Approval, ArtifactVersion, AuditEvent, BudgetAccount, Execution, Outbox, OwnerSession, Project, Task, now
 from .security import clear_auth_cookies, current_session, login, require_csrf, require_origin, set_auth_cookies
 from .services import AccessDenied, authorize_agent_project
+from .artifacts import proposal_valid
 
 app = FastAPI(title='Workforce control plane', docs_url=None, redoc_url=None)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=[urlparse(get_settings().allowed_origin).hostname])
@@ -39,7 +43,7 @@ class AgentInput(BaseModel):
     name: str = Field(min_length=1, max_length=160)
     role: str = Field(min_length=1, max_length=120)
     instructions: str = Field(min_length=1, max_length=20000)
-    provider_connection: str = Field(min_length=1, max_length=120)
+    provider_connection: Literal['fixture']
     model_id: str = Field(min_length=1, max_length=160)
 
 
@@ -154,7 +158,7 @@ class DispatchInput(BaseModel):
 def set_grant(agent_id: str, data: GrantInput, session: OwnerSession = Depends(require_csrf), db: Session = Depends(db_session)):
     if db.get(Agent, agent_id) is None or db.get(Project, data.project_id) is None:
         raise HTTPException(404, 'Resource not found')
-    row = db.scalar(select(AgentProjectGrant).where(AgentProjectGrant.agent_id == agent_id, AgentProjectGrant.project_id == data.project_id, AgentProjectGrant.action == data.action))
+    row = db.scalar(select(AgentProjectGrant).where(AgentProjectGrant.agent_id == agent_id, AgentProjectGrant.project_id == data.project_id, AgentProjectGrant.action == data.action).with_for_update())
     if row is None:
         row = AgentProjectGrant(agent_id=agent_id, project_id=data.project_id, action=data.action, allowed=data.allowed)
         db.add(row)
@@ -205,10 +209,12 @@ def cancel_execution(execution_id: str, session: OwnerSession = Depends(require_
     execution = db.execute(select(Execution).where(Execution.id == execution_id).with_for_update()).scalar_one_or_none()
     if execution is None:
         raise HTTPException(404, 'Execution not found')
-    if execution.status == 'succeeded':
+    if execution.status == 'succeeded' and db.scalar(select(Approval.id).where(
+        Approval.execution_id == execution_id, Approval.status.in_(['pending', 'approved'])).limit(1)) is None:
         raise HTTPException(409, 'Execution already succeeded')
     execution.cancelled = True
     execution.status = 'cancelled'
+    db.get(Task, execution.task_id).status = 'cancelled'
     db.add(AuditEvent(actor=session.owner_id, action='execution.cancel', resource=execution.id, outcome='allowed'))
     db.commit()
     return {'id': execution.id, 'status': execution.status}
@@ -216,6 +222,57 @@ def cancel_execution(execution_id: str, session: OwnerSession = Depends(require_
 
 @app.get('/api/approvals')
 def list_approvals(_: OwnerSession = Depends(current_session), db: Session = Depends(db_session)):
-    from .models import Approval
     rows = db.scalars(select(Approval).where(Approval.status == 'pending').order_by(Approval.expires_at).limit(100)).all()
-    return [{'id': row.id, 'execution_id': row.execution_id, 'resource': row.resource, 'status': row.status, 'expires_at': row.expires_at} for row in rows]
+    return [{'id': row.id, 'execution_id': row.execution_id, 'resource': row.resource, 'status': row.status,
+             'expires_at': row.expires_at, 'payload_hash': row.payload_hash, 'content': row.payload.get('content')}
+            for row in rows]
+
+
+class ApprovalDecision(BaseModel):
+    approved: bool
+    payload_hash: str = Field(min_length=64, max_length=64)
+
+
+@app.post('/api/approvals/{approval_id}/decision')
+def decide_approval(approval_id: str, data: ApprovalDecision, session: OwnerSession = Depends(require_csrf), db: Session = Depends(db_session)):
+    approval = db.execute(select(Approval).where(Approval.id == approval_id).with_for_update()).scalar_one_or_none()
+    if approval is None:
+        raise HTTPException(404, 'Approval not found')
+    if approval.status != 'pending':
+        raise HTTPException(409, 'Approval already decided')
+    if data.payload_hash != approval.payload_hash:
+        raise HTTPException(409, 'Proposal changed')
+    if data.approved and not proposal_valid(db, approval):
+        approval.status = 'invalidated'
+        db.add(AuditEvent(actor=session.owner_id, action='artifact.approval', resource=approval.resource, outcome='invalidated'))
+        db.commit()
+        raise HTTPException(409, 'Proposal invalidated')
+    approval.status = 'approved' if data.approved else 'rejected'
+    if data.approved:
+        approval.decision_payload_hash = approval.payload_hash
+    db.add(AuditEvent(actor=session.owner_id, action='artifact.approval', resource=approval.resource,
+                      outcome=approval.status, detail={'payload_hash': approval.payload_hash}))
+    db.commit()
+    return {'id': approval.id, 'status': approval.status}
+
+
+@app.get('/api/artifacts')
+def list_artifacts(project_id: str, _: OwnerSession = Depends(current_session), db: Session = Depends(db_session)):
+    if db.get(Project, project_id) is None:
+        raise HTTPException(404, 'Project not found')
+    rows = db.scalars(select(ArtifactVersion).where(ArtifactVersion.project_id == project_id)
+                      .order_by(ArtifactVersion.artifact_id, ArtifactVersion.version)).all()
+    return [{'id': row.id, 'artifact_id': row.artifact_id, 'version': row.version, 'parent_id': row.parent_id,
+             'execution_id': row.execution_id, 'author': row.author, 'digest': row.digest,
+             'mime_type': row.mime_type, 'size': row.size, 'created_at': row.created_at} for row in rows]
+
+
+@app.get('/api/artifacts/versions/{version_id}')
+def get_artifact_version(version_id: str, _: OwnerSession = Depends(current_session), db: Session = Depends(db_session)):
+    row = db.get(ArtifactVersion, version_id)
+    if row is None:
+        raise HTTPException(404, 'Artifact version not found')
+    content = Path(row.storage_ref).read_bytes()
+    if hashlib.sha256(content).hexdigest() != row.digest:
+        raise HTTPException(503, 'Artifact storage integrity failed')
+    return {'id': row.id, 'artifact_id': row.artifact_id, 'version': row.version, 'content': content.decode('utf-8')}

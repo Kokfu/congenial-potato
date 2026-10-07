@@ -40,11 +40,27 @@ test("owner can create project, grant a fixture agent, and review completed task
     .getByText(task, { exact: true })
     .locator("..")
     .locator("..");
+  const dispatchResponse = page.waitForResponse((response) => response.url().includes('/dispatch') && response.status() === 202);
   await taskRow.getByRole("button", { name: "Run fixture" }).click();
+  const executionId = ((await (await dispatchResponse).json()) as { execution_id: string }).execution_id;
   await expect
     .poll(async () => {
       await page.getByRole("button", { name: "Refresh" }).click();
       return taskRow.getByText("review", { exact: true }).count();
+    })
+    .toBe(1);
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await page.getByRole("button", { name: "Approvals" }).click();
+  const proposal = page.getByText(`Synthetic result for execution ${executionId}`, { exact: true }).locator('..').locator('..');
+  await expect(proposal).toBeVisible();
+  await proposal.getByRole("button", { name: "Approve artifact" }).click();
+  await expect
+    .poll(async () => {
+      const projects = (await (await page.request.get("/api/projects")).json()) as Array<{ id: string; name: string }>;
+      const id = projects.find((p) => p.name === project)?.id;
+      if (!id) return 0;
+      const versions = (await (await page.request.get(`/api/artifacts?project_id=${id}`)).json()) as unknown[];
+      return versions.length;
     })
     .toBe(1);
 });
