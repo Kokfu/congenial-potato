@@ -2,6 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from decimal import Decimal
 from urllib.parse import quote
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +21,7 @@ class Settings(BaseSettings):
     session_hours: int = 24
     artifact_dir: Path = Path('/var/lib/workforce/artifacts')
     daily_cap_usd: Decimal | None = None
+    model_call_timeout_seconds: int = Field(default=20, gt=0, le=120)
 
     def database_url(self, name: str) -> str:
         if not self.db_password_file:

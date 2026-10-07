@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from threading import Event
 
 from dbos import DBOS
 from sqlalchemy import select
@@ -7,10 +8,10 @@ from sqlalchemy import select
 from workforce.budgets import PriceEnvelope, reserve_shared_cost
 from workforce.config import get_settings
 from workforce.db import session_factory
-from workforce.models import (AgentConfigVersion, BudgetAccount, BudgetReservation,
-                              DailyBudgetAccount, Execution, ModelCall, Outbox)
+from workforce.models import (AgentConfigVersion, Approval, ArtifactVersion, BudgetAccount,
+                              BudgetReservation, DailyBudgetAccount, Execution, ModelCall, Outbox)
 from workforce.governed_call import governed_generate, price_for
-from workforce.providers import GenerationRequest, TextMessage
+from workforce.providers import FakeAdapter, GenerationRequest, TextMessage
 from workforce.worker import dispatch_once
 
 
@@ -42,7 +43,7 @@ def setup_priced_execution(authenticated, monkeypatch, connection, model):
 def launch():
     DBOS(config={'name': 'workforce-test', 'system_database_url':
         'postgresql://postgres:phase1fixture@127.0.0.1:55433/workforce_dbos_test',
-        'application_version': 'governed-cost-v1'})
+        'application_version': 'call-limits-v1'})
     DBOS.launch()
 
 
@@ -111,3 +112,48 @@ def test_replay_of_pre_call_commit_never_reissues_uncertain_request(authenticate
         assert hold.status == 'unknown'
         assert db.get(BudgetAccount, execution_id).reserved == hold.amount
         assert db.scalar(select(ModelCall).where(ModelCall.execution_id == execution_id)) is None
+
+
+def test_cancelled_execution_never_acquires_priced_hold(authenticated, monkeypatch):
+    execution_id = setup_priced_execution(authenticated, monkeypatch, 'fixture-alpha', 'alpha-text-v1')
+    with session_factory()() as db:
+        execution = db.get(Execution, execution_id)
+        price = price_for(db.get(AgentConfigVersion, execution.config_version_id))
+        execution.cancelled = True
+        db.commit()
+    request = GenerationRequest(request_id=execution_id, model_id='alpha-text-v1',
+        messages=(TextMessage(role='user', trust_origin='human', text='Synthetic task'),),
+        max_output_tokens=128)
+    assert governed_generate(execution_id, request, price) == {'error': 'cancelled', 'retryable': False}
+    with session_factory()() as db:
+        assert db.scalar(select(BudgetReservation).where(BudgetReservation.invocation_key == f'priced-model:{execution_id}')) is None
+        assert db.scalar(select(ModelCall).where(ModelCall.execution_id == execution_id)) is None
+
+
+def test_cancel_during_priced_call_blocks_following_artifact_effect(authenticated, monkeypatch):
+    execution_id = setup_priced_execution(authenticated, monkeypatch, 'fixture-alpha', 'alpha-text-v1')
+    started, proceed = Event(), Event()
+    original_generate = FakeAdapter.generate
+    def paused_generate(self, request):
+        started.set()
+        assert proceed.wait(10), 'Synthetic call was not released'
+        return original_generate(self, request)
+    monkeypatch.setattr(FakeAdapter, 'generate', paused_generate)
+    launch()
+    try:
+        assert dispatch_once() == 1
+        assert started.wait(10), 'Synthetic call did not start'
+        headers = {'Origin': 'http://localhost:8080', 'X-CSRF-Token': authenticated.cookies['workforce_csrf']}
+        assert authenticated.post(f'/api/executions/{execution_id}/cancel', headers=headers).status_code == 200
+        proceed.set()
+        assert DBOS.retrieve_workflow(f'execution:{execution_id}').get_result() == 'cancelled'
+    finally:
+        proceed.set()
+        DBOS.destroy()
+    with session_factory()() as db:
+        hold = db.scalar(select(BudgetReservation).where(BudgetReservation.invocation_key == f'priced-model:{execution_id}'))
+        assert hold.status == 'settled' and hold.actual > 0  # a completed call can still cost money
+        assert db.get(Execution, execution_id).status == 'cancelled'
+        assert db.scalar(select(ModelCall).where(ModelCall.execution_id == execution_id)) is not None
+        assert db.scalar(select(Approval.id).where(Approval.execution_id == execution_id)) is None
+        assert db.scalar(select(ArtifactVersion.id).where(ArtifactVersion.execution_id == execution_id)) is None

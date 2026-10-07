@@ -42,6 +42,17 @@ def _api_error(error: Exception, sdk: str) -> ProviderError:
     return ProviderError(ProviderErrorKind.MALFORMED_RESPONSE, 'Provider SDK failure')
 
 
+def _remaining_timeout(request: GenerationRequest) -> float | None:
+    if request.deadline_at is None:
+        return None
+    if request.deadline_at.tzinfo is None:
+        raise ProviderError(ProviderErrorKind.INVALID_REQUEST, 'Deadline must include a timezone')
+    seconds = (request.deadline_at - datetime.now(timezone.utc)).total_seconds()
+    if seconds <= 0:
+        raise ProviderError(ProviderErrorKind.TIMEOUT, 'Model call deadline expired')
+    return seconds
+
+
 class NativeTextAdapter:
     connection_id: str
 
@@ -110,9 +121,11 @@ class OpenAITextAdapter(NativeTextAdapter):
 
     def generate(self, request: GenerationRequest) -> GenerationResponse:
         self._validate(request)
+        timeout = _remaining_timeout(request)
         content = [{'role': message.role, 'content': message.text} for message in request.messages]
         try:
-            response = self._client.responses.create(model=request.model_id, input=content,
+            client = self._client.with_options(timeout=timeout) if timeout is not None else self._client
+            response = client.responses.create(model=request.model_id, input=content,
                                                       max_output_tokens=request.max_output_tokens,
                                                       store=False)
         except openai.OpenAIError as exc:
@@ -146,16 +159,18 @@ class AnthropicTextAdapter(NativeTextAdapter):
 
     def generate(self, request: GenerationRequest) -> GenerationResponse:
         self._validate(request)
+        timeout = _remaining_timeout(request)
         system = '\n'.join(message.text for message in request.messages if message.role == 'system')
         messages = [{'role': message.role, 'content': message.text}
                     for message in request.messages if message.role != 'system']
         if not messages:
             raise ProviderError(ProviderErrorKind.INVALID_REQUEST, 'User or assistant content required')
         try:
+            client = self._client.with_options(timeout=timeout) if timeout is not None else self._client
             kwargs = {'model': request.model_id, 'messages': messages, 'max_tokens': request.max_output_tokens}
             if system:
                 kwargs['system'] = system
-            response = self._client.messages.create(**kwargs)
+            response = client.messages.create(**kwargs)
         except anthropic.AnthropicError as exc:
             raise _api_error(exc, 'anthropic') from None
         if not response.content or any(block.type != 'text' for block in response.content):

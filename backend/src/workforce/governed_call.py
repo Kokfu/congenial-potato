@@ -69,6 +69,12 @@ def governed_generate(execution_id: str, request: GenerationRequest, price: Pric
         db.commit()
 
     try:
+        with session_factory()() as db:
+            execution = db.get(Execution, execution_id)
+            if execution.cancelled:
+                settle_shared_cost(db, key, 0)
+                db.commit()
+                return {'error': 'cancelled', 'retryable': False}
         response = adapter.generate(request)
     except ProviderError as exc:
         with session_factory()() as db:

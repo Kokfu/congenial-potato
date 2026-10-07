@@ -130,6 +130,9 @@ class FakeAdapter:
         raise ProviderError(ProviderErrorKind.UNAVAILABLE_MODEL, 'Model is not available')
 
     def _validate(self, request: GenerationRequest) -> Capabilities:
+        if request.deadline_at is not None:
+            if request.deadline_at.tzinfo is None or request.deadline_at <= datetime.now(timezone.utc):
+                raise ProviderError(ProviderErrorKind.TIMEOUT, 'Model call deadline expired')
         cap = self.describe_capabilities(request.model_id)
         if (not cap.text_input or not cap.text_output or
             request.max_output_tokens > cap.max_output_tokens or
