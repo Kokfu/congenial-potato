@@ -1,8 +1,8 @@
 # AI Workforce: approved architecture
 
-The human approved the research and architecture direction in the project conversation. Technology selection remains subject to the bounded Phase 0 adoption and recovery validation.
+The human approved the research and architecture direction in the project conversation. Phase 0 validation is recorded below. Implementation status and evidence are tracked in [project progress](../progress.md).
 
-This branch contains documentation only. It contains no application, executable proof of concept, deployment, credentials, or claimed runtime test results.
+The repository now contains a fixture-only self-hosted foundation. Provider work remains synthetic in the running application; native SDK adapters have offline tests and are not registered for live execution.
 
 ## Read first
 
@@ -10,6 +10,7 @@ This branch contains documentation only. It contains no application, executable 
 2. [System architecture](architecture/system-architecture.md)
 3. [MVP and implementation phases](mvp-plan.md)
 4. [Phase 0 validation status and protocol](research/phase-0-validation.md)
+5. [Provider SDK offline validation](research/provider-sdk-validation.md)
 
 ## Architecture
 
@@ -31,10 +32,6 @@ This branch contains documentation only. It contains no application, executable 
 - [004: Memory strategy](adr/004-memory-strategy.md)
 - [005: Provider abstraction](adr/005-provider-abstraction.md)
 
-## Next coding task
+## Current coding task
 
-The research and architecture are approved. Inspect repository instructions, then perform Phase 0 using local fixtures and fake providers. Evaluate Paperclip adoption and DBOS recovery, record reproducible commands and actual results in `docs/research/phase-0-validation.md`, and stop before substantial application implementation.
-
-Do not request architecture approval again. Do not use paid model calls, real company credentials, or production integrations. Deliver the bounded validation changes through a pull request.
-
-A repository-connected execution environment with a terminal and a supported PostgreSQL/test setup is required. GitHub connector access alone is sufficient to edit documentation, but cannot execute these experiments.
+Follow [progress.md](../progress.md) task by task. Complete Phase 2's native provider boundary with verified capability manifests, budget enforcement, and explicit live activation before any real request. Keep paid calls and production credentials disabled during offline validation.

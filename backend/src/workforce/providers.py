@@ -39,7 +39,7 @@ class Capabilities(BaseModel):
 
 class CatalogModel(BaseModel):
     model_id: str
-    capabilities: Capabilities
+    capabilities: Capabilities | None = None
 
 
 class CatalogSnapshot(BaseModel):
@@ -124,6 +124,8 @@ class FakeAdapter:
     def describe_capabilities(self, model_id: str) -> Capabilities:
         for model in self.discover_models().models:
             if model.model_id == model_id:
+                if model.capabilities is None:
+                    raise ProviderError(ProviderErrorKind.CAPABILITY, 'Model capabilities are unvalidated')
                 return model.capabilities
         raise ProviderError(ProviderErrorKind.UNAVAILABLE_MODEL, 'Model is not available')
 

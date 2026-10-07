@@ -43,7 +43,8 @@ Updated: 2026-10-07. This is the execution ledger for the approved AI workforce 
 - [x] **2.2 Stable agent configuration changes.** Add immutable config revisions and an authenticated update path. Keep the agent ID, project grants and history stable across fake provider switches; pin each execution to its recorded config revision.
 - [x] **2.3 Worker boundary and limits.** Route fixture generation through the provider registry without provider-name branches in orchestration. Validate required capabilities and reserve shared root budget before a model call. Record actual provider, model and usage with unknown values preserved.
 - [x] **2.4 Failure/restart contracts.** Test switching, incompatible capabilities, timeout, cancellation and replay with deterministic fake adapters and PostgreSQL/DBOS. Then run the private UI flow and Compose restart checks.
-- [ ] **2.5 Native providers after fixture gate.** Implement OpenAI and Anthropic adapters using verified current SDK APIs and licenses, with credential references outside prompts/logs. Keep all live calls opt-in, capped and disabled by default.
+- [x] **2.5a Native SDK offline adapters.** Verify current OpenAI and Anthropic SDK versions, licenses and APIs; normalize text generation and errors through in-memory HTTP fixtures. Use private absolute secret file references. Build the backend image with pinned SDKs.
+- [ ] **2.5b Native activation gate.** Integrate adapters into the application registry only after per-model capability manifests, conservative cost bounds, root/daily caps, credential policy, cancellation and uncertain-outcome handling are enforceable. Keep live calls opt-in and disabled by default; do not spend money during fixture validation.
 
 ## Verified Phase 2 fixture evidence
 
@@ -51,7 +52,8 @@ Updated: 2026-10-07. This is the execution ledger for the approved AI workforce 
 - Twelve PostgreSQL/DBOS backend tests passed. Agent switching preserved one identity and project grant; executions kept config versions 1 and 2 and recorded alpha and beta model calls. Unknown reported cost remained null. Unsupported models/capabilities failed closed; a timeout ended the workflow as failed, released its root reservation and recorded no model call.
 - `scripts/provider_switch_smoke.py` passed on Compose: same agent ID, two config versions, two fake provider calls. Chromium passed project/task/approval flow, switched the agent to beta and verified the next call used beta. Backend and web images built; migration exited successfully; API, DB and web were healthy.
 - Replayed a completed beta outbox dispatch after restarting the worker. Model-call and successful-completion audit counts remained 15 each, and undelivered outbox count returned to zero. No paid model requests or production credentials were used.
-- Remaining Phase 2 work: verify current OpenAI/Anthropic SDK versions, licenses and APIs, implement native adapters behind this contract, and test them with HTTP fixtures only before any opt-in capped live check. Provider-specific workflow version migrations need a drain/rollout procedure.
+- Native SDK validation: OpenAI Python 3.26.0 (Apache-2.0) and Anthropic Python 1.11.0 (MIT) were installed and their current models/generation methods exercised through `httpx2.MockTransport`; native adapters remain unregistered. Exact commands, response mappings and limits are in `docs/research/provider-sdk-validation.md`. Phase 2 remains open for live activation policy and cost controls. Provider-specific workflow version migrations need a drain/rollout procedure.
+- The backend image built with both pinned SDKs; a container imported both native adapters and reported the expected versions. The full PostgreSQL and offline SDK suite passed 17 tests. No real provider endpoint was contacted.
 
 ## Working rules and evidence
 
