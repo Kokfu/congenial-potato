@@ -1,0 +1,113 @@
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+
+from dbos import DBOS
+from sqlalchemy import select
+
+from workforce.budgets import PriceEnvelope, reserve_shared_cost
+from workforce.config import get_settings
+from workforce.db import session_factory
+from workforce.models import (AgentConfigVersion, BudgetAccount, BudgetReservation,
+                              DailyBudgetAccount, Execution, ModelCall, Outbox)
+from workforce.governed_call import governed_generate, price_for
+from workforce.providers import GenerationRequest, TextMessage
+from workforce.worker import dispatch_once
+
+
+def setup_priced_execution(authenticated, monkeypatch, connection, model):
+    monkeypatch.setenv('DAILY_CAP_USD', '1.0')
+    get_settings.cache_clear()
+    headers = {'Origin': 'http://localhost:8080', 'X-CSRF-Token': authenticated.cookies['workforce_csrf']}
+    project = authenticated.post('/api/projects', json={'name': 'Priced fixture'}, headers=headers).json()
+    agent = authenticated.post('/api/agents', json={
+        'name': 'Priced worker', 'role': 'specialist', 'instructions': 'Synthetic only',
+        'provider_connection': connection, 'model_id': model}, headers=headers).json()
+    task = authenticated.post('/api/tasks', json={'project_id': project['id'], 'title': 'Priced task'}, headers=headers).json()
+    assert authenticated.post(f"/api/agents/{agent['id']}/grants", json={
+        'project_id': project['id'], 'action': 'project.execute', 'allowed': True}, headers=headers).status_code == 201
+    envelope = PriceEnvelope(provider_connection=connection, model_id=model, source='synthetic-test',
+        observed_at=datetime.now(timezone.utc), expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+        max_input_tokens=500, max_output_tokens=128,
+        input_usd_per_million=Decimal('1'), output_usd_per_million=Decimal('2'))
+    with session_factory()() as db:
+        config = db.scalar(select(AgentConfigVersion).where(AgentConfigVersion.agent_id == agent['id']))
+        config.config = {'price_envelope': envelope.model_dump(mode='json')}
+        db.commit()
+    response = authenticated.post(f"/api/tasks/{task['id']}/dispatch", json={
+        'agent_id': agent['id'], 'root_cap': '1.0'}, headers=headers)
+    assert response.status_code == 202, response.text
+    return response.json()['execution_id']
+
+
+def launch():
+    DBOS(config={'name': 'workforce-test', 'system_database_url':
+        'postgresql://postgres:phase1fixture@127.0.0.1:55433/workforce_dbos_test',
+        'application_version': 'governed-cost-v1'})
+    DBOS.launch()
+
+
+def test_priced_fixture_settles_once_and_replay_has_no_extra_effect(authenticated, monkeypatch):
+    execution_id = setup_priced_execution(authenticated, monkeypatch, 'fixture-alpha', 'alpha-text-v1')
+    launch()
+    try:
+        assert dispatch_once() == 1
+        assert DBOS.retrieve_workflow(f'execution:{execution_id}').get_result() == 'succeeded'
+        with session_factory()() as db:
+            assert db.get(Execution, execution_id).status == 'succeeded'
+            hold = db.scalar(select(BudgetReservation).where(BudgetReservation.invocation_key == f'priced-model:{execution_id}'))
+            assert hold.status == 'settled' and hold.actual > 0
+            root = db.get(BudgetAccount, execution_id)
+            daily = db.get(DailyBudgetAccount, hold.daily_day)
+            assert root.reserved == daily.reserved == 0
+            assert root.spent == daily.spent == hold.actual
+            assert db.scalar(select(ModelCall).where(ModelCall.execution_id == execution_id)) is not None
+            for row in db.scalars(select(Outbox)):
+                row.delivered_at = None
+            db.commit()
+        assert dispatch_once() == 1
+        assert DBOS.retrieve_workflow(f'execution:{execution_id}').get_result() == 'succeeded'
+    finally:
+        DBOS.destroy()
+    with session_factory()() as db:
+        assert len(db.scalars(select(ModelCall).where(ModelCall.execution_id == execution_id)).all()) == 1
+        assert db.get(BudgetAccount, execution_id).spent == hold.actual
+
+
+def test_timeout_retains_shared_hold_and_is_unknown(authenticated, monkeypatch):
+    execution_id = setup_priced_execution(authenticated, monkeypatch, 'fixture-timeout', 'timeout-v1')
+    launch()
+    try:
+        assert dispatch_once() == 1
+        assert DBOS.retrieve_workflow(f'execution:{execution_id}').get_result() == 'unknown'
+    finally:
+        DBOS.destroy()
+    with session_factory()() as db:
+        hold = db.scalar(select(BudgetReservation).where(BudgetReservation.invocation_key == f'priced-model:{execution_id}'))
+        assert hold.status == 'unknown' and hold.actual is None
+        assert db.get(BudgetAccount, execution_id).reserved == hold.amount
+        assert db.get(DailyBudgetAccount, hold.daily_day).reserved == hold.amount
+        assert db.scalar(select(ModelCall).where(ModelCall.execution_id == execution_id)) is None
+
+
+def test_replay_of_pre_call_commit_never_reissues_uncertain_request(authenticated, monkeypatch):
+    execution_id = setup_priced_execution(authenticated, monkeypatch, 'fixture-alpha', 'alpha-text-v1')
+    with session_factory()() as db:
+        execution = db.get(Execution, execution_id)
+        config = db.get(AgentConfigVersion, execution.config_version_id)
+        price = price_for(config)
+        hold = reserve_shared_cost(db, execution.root_id, datetime.now(timezone.utc).date(),
+            f'priced-model:{execution_id}', price.upper_bound(), Decimal('1.0'))
+        hold.status = 'calling'  # crash after pre-call commit; call outcome is unknowable
+        db.commit()
+    request = GenerationRequest(request_id=execution_id, model_id='alpha-text-v1',
+        messages=(TextMessage(role='user', trust_origin='human', text='Synthetic task'),),
+        max_output_tokens=128)
+    def unexpected_generate(_request):
+        raise AssertionError('Uncertain request was reissued')
+    monkeypatch.setattr('workforce.providers.FakeAdapter.generate', unexpected_generate)
+    assert governed_generate(execution_id, request, price) == {'error': 'outcome_unknown', 'retryable': False}
+    with session_factory()() as db:
+        hold = db.scalar(select(BudgetReservation).where(BudgetReservation.invocation_key == f'priced-model:{execution_id}'))
+        assert hold.status == 'unknown'
+        assert db.get(BudgetAccount, execution_id).reserved == hold.amount
+        assert db.scalar(select(ModelCall).where(ModelCall.execution_id == execution_id)) is None

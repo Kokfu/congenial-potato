@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from decimal import Decimal
 from urllib.parse import quote
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -18,6 +19,7 @@ class Settings(BaseSettings):
     allowed_origin: str = 'http://localhost:8080'
     session_hours: int = 24
     artifact_dir: Path = Path('/var/lib/workforce/artifacts')
+    daily_cap_usd: Decimal | None = None
 
     def database_url(self, name: str) -> str:
         if not self.db_password_file:
