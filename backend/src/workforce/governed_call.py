@@ -11,7 +11,7 @@ from .budgets import PriceEnvelope, reserve_shared_cost, settle_shared_cost
 from .config import get_settings
 from .db import session_factory
 from .models import AgentConfigVersion, AuditEvent, BudgetReservation, Execution, ModelCall, Task
-from .providers import GenerationRequest, GenerationResponse, ProviderError, ProviderErrorKind, registry
+from .providers import GenerationRequest, GenerationResponse, ProviderError, registry
 from .services import AccessDenied, authorize_agent_project
 
 
@@ -78,11 +78,11 @@ def governed_generate(execution_id: str, request: GenerationRequest, price: Pric
         response = adapter.generate(request)
     except ProviderError as exc:
         with session_factory()() as db:
-            uncertain = exc.kind in (ProviderErrorKind.TIMEOUT, ProviderErrorKind.TRANSIENT,
-                                      ProviderErrorKind.RATE_LIMIT)
-            settle_shared_cost(db, key, None if uncertain else 0)
+            # A provider exception after dispatch does not prove the provider
+            # declined or did not bill the request, even for a malformed reply.
+            settle_shared_cost(db, key, None)
             db.commit()
-        return {'error': 'outcome_unknown' if uncertain else exc.kind.value, 'retryable': False}
+        return {'error': 'outcome_unknown', 'provider_error': exc.kind.value, 'retryable': False}
 
     actual = price.actual_cost(response.usage.input_tokens, response.usage.output_tokens)
     if response.actual_model != request.model_id:

@@ -95,7 +95,7 @@ def test_agent_switch_keeps_identity_grants_and_execution_config(authenticated):
     from workforce.worker import dispatch_once
     DBOS(config={'name': 'workforce-test', 'system_database_url':
                  'postgresql://postgres:phase1fixture@127.0.0.1:55433/workforce_dbos_test',
-                 'application_version': 'provider-boundary-v1'})
+                 'application_version': 'usage-normalization-v1'})
     DBOS.launch()
     try:
         assert dispatch_once() == 2
@@ -133,7 +133,7 @@ def test_timeout_fixture_releases_budget_without_model_effect(authenticated):
     execution_id = response.json()['execution_id']
     DBOS(config={'name': 'workforce-test', 'system_database_url':
                  'postgresql://postgres:phase1fixture@127.0.0.1:55433/workforce_dbos_test',
-                 'application_version': 'provider-boundary-v1'})
+                 'application_version': 'usage-normalization-v1'})
     DBOS.launch()
     try:
         assert dispatch_once() == 1

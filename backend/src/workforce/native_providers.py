@@ -162,10 +162,15 @@ class OpenAITextAdapter(NativeTextAdapter):
         if response.status != 'completed' or not response.output_text:
             raise ProviderError(ProviderErrorKind.MALFORMED_RESPONSE, 'Provider returned no completed text')
         usage = response.usage
+        input_details = getattr(usage, 'input_tokens_details', None) if usage else None
+        output_details = getattr(usage, 'output_tokens_details', None) if usage else None
         return GenerationResponse(content=response.output_text, actual_model=response.model,
                                   provider_request_id=response.id, finish_reason=response.status,
                                   usage=Usage(input_tokens=usage.input_tokens if usage else None,
                                               output_tokens=usage.output_tokens if usage else None,
+                                              cached_input_tokens=getattr(input_details, 'cached_tokens', None),
+                                              cache_creation_input_tokens=getattr(input_details, 'cache_write_tokens', None),
+                                              reasoning_output_tokens=getattr(output_details, 'reasoning_tokens', None),
                                               reported_cost_usd=None))
 
 
@@ -207,8 +212,14 @@ class AnthropicTextAdapter(NativeTextAdapter):
         output = ''.join(block.text for block in response.content)
         if not output:
             raise ProviderError(ProviderErrorKind.MALFORMED_RESPONSE, 'Provider returned empty text')
+        cache_creation = response.usage.cache_creation_input_tokens or 0
+        cache_read = response.usage.cache_read_input_tokens or 0
+        output_details = getattr(response.usage, 'output_tokens_details', None)
         return GenerationResponse(content=output, actual_model=response.model,
                                   provider_request_id=response.id, finish_reason=response.stop_reason or 'unknown',
-                                  usage=Usage(input_tokens=response.usage.input_tokens,
+                                  usage=Usage(input_tokens=response.usage.input_tokens + cache_creation + cache_read,
                                               output_tokens=response.usage.output_tokens,
+                                              cached_input_tokens=cache_read,
+                                              cache_creation_input_tokens=cache_creation,
+                                              reasoning_output_tokens=getattr(output_details, 'thinking_tokens', None),
                                               reported_cost_usd=None))
