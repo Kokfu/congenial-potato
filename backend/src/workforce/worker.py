@@ -9,6 +9,7 @@ from .db import session_factory
 from .models import AgentConfigVersion, AuditEvent, BudgetAccount, BudgetReservation, Execution, ModelCall, Outbox, Task, now
 from .services import AccessDenied, authorize_agent_project, reserve_budget
 from .artifacts import apply_approved_artifacts, propose_fixture_artifact
+from .cancellation import invalidate_cancelled_approvals
 from . import providers
 from .providers import GenerationRequest, GenerationResponse, ProviderError, TextMessage
 from .governed_call import governed_generate, price_for
@@ -168,6 +169,9 @@ def main() -> None:
         while True:
             dispatch_once()
             apply_approved_artifacts()
+            with session_factory()() as db:
+                if invalidate_cancelled_approvals(db):
+                    db.commit()
             time.sleep(0.5)
     finally:
         DBOS.destroy()

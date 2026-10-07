@@ -134,6 +134,24 @@ class PlanProposal(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class TaskMessage(Base):
+    __tablename__ = 'task_messages'
+    __table_args__ = (UniqueConstraint('sender_execution_id', 'correlation_key',
+                                       name='uq_message_sender_correlation'),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'))
+    task_id: Mapped[str] = mapped_column(ForeignKey('tasks.id'))
+    sender_execution_id: Mapped[str] = mapped_column(ForeignKey('executions.id'))
+    sender_agent_id: Mapped[str] = mapped_column(ForeignKey('agents.id'))
+    recipient_agent_id: Mapped[str] = mapped_column(ForeignKey('agents.id'))
+    reply_to_id: Mapped[str | None] = mapped_column(ForeignKey('task_messages.id'))
+    correlation_key: Mapped[str] = mapped_column(String(100))
+    payload_hash: Mapped[str] = mapped_column(String(64))
+    content: Mapped[str] = mapped_column(Text)
+    reply_depth: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class Execution(Base):
     __tablename__ = 'executions'
     __table_args__ = (UniqueConstraint('parent_id', 'delegation_key', name='uq_execution_delegation_key'),)
