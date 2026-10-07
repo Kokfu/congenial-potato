@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime, timedelta, timezone
 
 from workforce.providers import (GenerationRequest, ProviderError, ProviderErrorKind,
                                  ProviderRegistry, TextMessage, fixture_registry)
@@ -27,6 +28,10 @@ def test_fake_adapters_discovery_capabilities_and_unknown_usage():
     response = alpha.generate(request('alpha-text-v1'))
     assert response.actual_model == 'alpha-text-v1'
     assert response.usage.reported_cost_usd is None
+    with pytest.raises(ProviderError) as expired:
+        alpha.generate(request('alpha-text-v1').model_copy(update={
+            'deadline_at': datetime.now(timezone.utc) - timedelta(seconds=1)}))
+    assert expired.value.kind == ProviderErrorKind.TIMEOUT
     assert alpha.estimate_usage(request('alpha-text-v1')).cost_upper_bound_usd is None
     streamed = list(alpha.stream(request('alpha-text-v1')))
     assert streamed[-1].kind == 'final' and streamed[-1].response == response

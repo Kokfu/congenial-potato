@@ -1,5 +1,6 @@
 """Separate worker; never run agent work in an HTTP request."""
 import time
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from dbos import DBOS, SetWorkflowID
 from sqlalchemy import select
@@ -37,7 +38,9 @@ def generate_step(execution_id: str) -> dict:
         request = GenerationRequest(request_id=execution_id, model_id=config.model_id,
                                     messages=(TextMessage(role='system', trust_origin='human', text=config.instructions),
                                               TextMessage(role='user', trust_origin='human', text=task.title)),
-                                    max_output_tokens=128)
+                                    max_output_tokens=128,
+                                    deadline_at=datetime.now(timezone.utc) + timedelta(
+                                        seconds=get_settings().model_call_timeout_seconds))
         connection = config.provider_connection
         try:
             price = price_for(config)
@@ -157,7 +160,7 @@ def dispatch_once() -> int:
 
 def main() -> None:
     settings = get_settings()
-    DBOS(config={'name': 'workforce', 'system_database_url': settings.workflow_url, 'application_version': 'governed-cost-v1', 'run_migrations': False, 'log_level': 'WARNING'})
+    DBOS(config={'name': 'workforce', 'system_database_url': settings.workflow_url, 'application_version': 'call-limits-v1', 'run_migrations': False, 'log_level': 'WARNING'})
     DBOS.launch()
     try:
         while True:

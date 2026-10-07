@@ -1,5 +1,6 @@
 """Offline SDK contract tests: every provider request is intercepted in memory."""
 import json
+from datetime import datetime, timedelta, timezone
 
 import anthropic
 import httpx2
@@ -38,7 +39,8 @@ def test_openai_sdk_326_response_and_catalog_are_normalized_offline():
     with pytest.raises(ProviderError) as unvalidated:
         adapter.describe_capabilities('unvalidated-model')
     assert unvalidated.value.kind == ProviderErrorKind.CAPABILITY
-    response = adapter.generate(REQUEST)
+    response = adapter.generate(REQUEST.model_copy(update={
+        'deadline_at': datetime.now(timezone.utc) + timedelta(seconds=20)}))
     assert (response.content, response.actual_model, response.provider_request_id) == ('Hello', 'fixture-model', 'resp_fixture')
     assert response.usage.input_tokens == 4 and response.usage.reported_cost_usd is None
     assert calls[1][1]['store'] is False
@@ -62,7 +64,8 @@ def test_anthropic_sdk_111_message_and_catalog_are_normalized_offline():
                                  http_client=httpx2.Client(transport=httpx2.MockTransport(handler)))
     adapter = AnthropicTextAdapter({'fixture-model': CAPABILITIES}, client=client)
     assert adapter.discover_models(refresh=True).models[0].model_id == 'fixture-model'
-    response = adapter.generate(REQUEST)
+    response = adapter.generate(REQUEST.model_copy(update={
+        'deadline_at': datetime.now(timezone.utc) + timedelta(seconds=20)}))
     assert (response.content, response.actual_model, response.provider_request_id) == ('Hello', 'fixture-model', 'msg_fixture')
     assert response.usage.output_tokens == 2 and response.usage.reported_cost_usd is None
     assert calls[1][1]['system'] == 'Stay concise.'
@@ -112,3 +115,21 @@ def test_anthropic_auth_failure_and_native_streaming_fail_closed():
     with pytest.raises(ProviderError) as unsupported:
         adapter.stream(REQUEST)
     assert unsupported.value.kind == ProviderErrorKind.CAPABILITY
+
+
+def test_native_deadline_expires_without_network_request():
+    calls = []
+    def handler(request):
+        calls.append(request)
+        raise AssertionError('Expired deadline reached network transport')
+    past = REQUEST.model_copy(update={'deadline_at': datetime.now(timezone.utc) - timedelta(seconds=1)})
+    openai_client = openai.OpenAI(api_key='offline-fixture', max_retries=0,
+                                 http_client=httpx2.Client(transport=httpx2.MockTransport(handler)))
+    anthropic_client = anthropic.Anthropic(api_key='offline-fixture', max_retries=0,
+                                           http_client=httpx2.Client(transport=httpx2.MockTransport(handler)))
+    for adapter in (OpenAITextAdapter({'fixture-model': CAPABILITIES}, client=openai_client),
+                    AnthropicTextAdapter({'fixture-model': CAPABILITIES}, client=anthropic_client)):
+        with pytest.raises(ProviderError) as expired:
+            adapter.generate(past)
+        assert expired.value.kind == ProviderErrorKind.TIMEOUT
+    assert not calls
