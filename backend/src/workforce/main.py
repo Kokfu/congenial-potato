@@ -14,7 +14,8 @@ from .models import Agent, AgentConfigVersion, AgentProjectGrant, Approval, Arti
 from .security import clear_auth_cookies, current_session, login, require_csrf, require_origin, set_auth_cookies
 from .services import AccessDenied, authorize_agent_project
 from .artifacts import proposal_valid
-from .providers import ProviderError, registry
+from . import providers
+from .providers import ProviderError
 
 app = FastAPI(title='Workforce control plane', docs_url=None, redoc_url=None)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=[urlparse(get_settings().allowed_origin).hostname])
@@ -116,7 +117,7 @@ def list_agents(_: OwnerSession = Depends(current_session), db: Session = Depend
 @app.post('/api/agents', status_code=201)
 def create_agent(data: AgentInput, session: OwnerSession = Depends(require_csrf), db: Session = Depends(db_session)):
     try:
-        registry.get(data.provider_connection).describe_capabilities(data.model_id)
+        providers.registry.get(data.provider_connection).describe_capabilities(data.model_id)
     except ProviderError as exc:
         raise HTTPException(422, str(exc)) from exc
     agent = Agent(name=data.name, role=data.role)

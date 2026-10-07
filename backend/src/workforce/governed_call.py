@@ -11,7 +11,8 @@ from .budgets import PriceEnvelope, reserve_shared_cost, settle_shared_cost
 from .config import get_settings
 from .db import session_factory
 from .models import AgentConfigVersion, AuditEvent, BudgetReservation, Execution, ModelCall, Task
-from .providers import GenerationRequest, GenerationResponse, ProviderError, registry
+from . import providers
+from .providers import GenerationRequest, GenerationResponse, ProviderError
 from .services import AccessDenied, authorize_agent_project
 
 
@@ -37,7 +38,7 @@ def governed_generate(execution_id: str, request: GenerationRequest, price: Pric
         config = db.get(AgentConfigVersion, execution.config_version_id)
         if config.provider_connection != price.provider_connection or request.model_id != price.model_id:
             raise AccessDenied('Price envelope does not match model request')
-        adapter = registry.get(config.provider_connection)
+        adapter = providers.registry.get(config.provider_connection)
         estimate = adapter.estimate_usage(request)
         if (estimate.input_tokens > price.max_input_tokens or
                 request.max_output_tokens > price.max_output_tokens):

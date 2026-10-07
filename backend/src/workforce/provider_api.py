@@ -8,7 +8,8 @@ from .db import db_session
 from .budgets import PriceEnvelope
 from .config import get_settings
 from .models import Agent, AgentConfigVersion, AuditEvent, Execution, ModelCall, OwnerSession
-from .providers import ProviderError, registry
+from . import providers
+from .providers import ProviderError
 from .security import current_session, require_csrf
 from .services import AccessDenied
 
@@ -36,8 +37,8 @@ class ConfigUpdate(BaseModel):
 
 @router.get('/api/provider-connections')
 def list_provider_connections(refresh: bool = False, _: OwnerSession = Depends(current_session)):
-    return [registry.get(connection).discover_models(refresh=refresh).model_dump(mode='json')
-            for connection in registry.connections()]
+    return [providers.registry.get(connection).discover_models(refresh=refresh).model_dump(mode='json')
+            for connection in providers.registry.connections()]
 
 
 @router.get('/api/agents/{agent_id}/config')
@@ -64,7 +65,7 @@ def update_agent_config(agent_id: str, data: ConfigUpdate, session: OwnerSession
     if current is None or current.version != data.expected_version:
         raise HTTPException(409, 'Agent config version changed')
     try:
-        capabilities = registry.get(data.provider_connection).describe_capabilities(data.model_id)
+        capabilities = providers.registry.get(data.provider_connection).describe_capabilities(data.model_id)
     except ProviderError as exc:
         raise HTTPException(422, str(exc)) from exc
     price = data.price_envelope

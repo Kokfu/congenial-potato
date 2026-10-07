@@ -9,7 +9,8 @@ from .db import session_factory
 from .models import AgentConfigVersion, AuditEvent, BudgetAccount, BudgetReservation, Execution, ModelCall, Outbox, Task, now
 from .services import AccessDenied, authorize_agent_project, reserve_budget
 from .artifacts import apply_approved_artifacts, propose_fixture_artifact
-from .providers import GenerationRequest, GenerationResponse, ProviderError, TextMessage, registry
+from . import providers
+from .providers import GenerationRequest, GenerationResponse, ProviderError, TextMessage
 from .governed_call import governed_generate, price_for
 
 RESERVATION = Decimal('0.010000')
@@ -51,7 +52,7 @@ def generate_step(execution_id: str) -> dict:
     try:
         if price is not None:
             return governed_generate(execution_id, request, price)
-        response = registry.get(connection).generate(request)
+        response = providers.registry.get(connection).generate(request)
     except ProviderError as exc:
         return {'error': exc.kind.value, 'retryable': exc.retryable}
     except (AccessDenied, ValueError):
