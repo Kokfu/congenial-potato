@@ -12,6 +12,10 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 4. [Phase 0 validation status and protocol](research/phase-0-validation.md)
 5. [Provider SDK offline validation](research/provider-sdk-validation.md)
 6. [Shared cost ledger fixture validation](research/shared-cost-ledger-validation.md)
+7. [Governed synthetic calls](research/governed-call-validation.md)
+8. [Call deadlines and cancellation](research/call-limits-validation.md)
+9. [Owner price configuration](research/price-config-validation.md)
+10. [Unknown synthetic charge reconciliation](research/unknown-cost-reconciliation.md)
 
 ## Architecture
 

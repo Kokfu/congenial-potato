@@ -8,7 +8,7 @@ from sqlalchemy import select
 from workforce.budgets import PriceEnvelope, reserve_shared_cost
 from workforce.config import get_settings
 from workforce.db import session_factory
-from workforce.models import (AgentConfigVersion, Approval, ArtifactVersion, BudgetAccount,
+from workforce.models import (AgentConfigVersion, Approval, ArtifactVersion, AuditEvent, BudgetAccount,
                               BudgetReservation, DailyBudgetAccount, Execution, ModelCall, Outbox)
 from workforce.governed_call import governed_generate, price_for
 from workforce.providers import FakeAdapter, GenerationRequest, TextMessage
@@ -100,6 +100,10 @@ def test_priced_fixture_settles_once_and_replay_has_no_extra_effect(authenticate
     with session_factory()() as db:
         assert len(db.scalars(select(ModelCall).where(ModelCall.execution_id == execution_id)).all()) == 1
         assert db.get(BudgetAccount, execution_id).spent == hold.actual
+    headers = {'Origin': 'http://localhost:8080', 'X-CSRF-Token': authenticated.cookies['workforce_csrf']}
+    assert authenticated.post(f'/api/executions/{execution_id}/cost-reconciliation', json={
+        'expected_hold_amount': str(hold.amount), 'charged_usd': str(hold.actual),
+        'evidence_reference': 'synthetic:cannot-rewrite-known-result'}, headers=headers).status_code == 409
 
 
 def test_timeout_retains_shared_hold_and_is_unknown(authenticated, monkeypatch):
@@ -116,6 +120,47 @@ def test_timeout_retains_shared_hold_and_is_unknown(authenticated, monkeypatch):
         assert db.get(BudgetAccount, execution_id).reserved == hold.amount
         assert db.get(DailyBudgetAccount, hold.daily_day).reserved == hold.amount
         assert db.scalar(select(ModelCall).where(ModelCall.execution_id == execution_id)) is None
+
+
+def test_owner_reconciles_unknown_synthetic_charge_once(authenticated, monkeypatch):
+    execution_id = setup_priced_execution(authenticated, monkeypatch, 'fixture-timeout', 'timeout-v1')
+    launch()
+    try:
+        assert dispatch_once() == 1
+        assert DBOS.retrieve_workflow(f'execution:{execution_id}').get_result() == 'unknown'
+    finally:
+        DBOS.destroy()
+    hold_url = f'/api/executions/{execution_id}/cost-hold'
+    hold = authenticated.get(hold_url).json()
+    assert hold['status'] == 'unknown' and hold['actual'] is None
+    headers = {'Origin': 'http://localhost:8080', 'X-CSRF-Token': authenticated.cookies['workforce_csrf']}
+    url = f'/api/executions/{execution_id}/cost-reconciliation'
+    body = {'expected_hold_amount': str(hold['amount']), 'charged_usd': '0.000111',
+            'evidence_reference': 'synthetic:effect-ledger/receipt-1'}
+    assert authenticated.post(url, json=body,
+                              headers={'Origin': 'http://localhost:8080'}).status_code == 403
+    assert authenticated.post(url, json={**body, 'evidence_reference': 'unverified receipt'},
+                              headers=headers).status_code == 422
+    assert authenticated.post(url, json={**body, 'expected_hold_amount': '0.999999'},
+                              headers=headers).status_code == 409
+    first = authenticated.post(url, json=body, headers=headers)
+    assert first.status_code == 200, first.text
+    assert first.json()['status'] == 'settled'
+    assert authenticated.post(url, json=body, headers=headers).status_code == 200
+    assert authenticated.post(url, json={**body, 'charged_usd': '0.000112'},
+                              headers=headers).status_code == 409
+    assert authenticated.post(url, json={**body, 'evidence_reference': 'synthetic:another'},
+                              headers=headers).status_code == 409
+    with session_factory()() as db:
+        reservation = db.scalar(select(BudgetReservation).where(
+            BudgetReservation.invocation_key == f'priced-model:{execution_id}'))
+        root = db.get(BudgetAccount, execution_id)
+        daily = db.get(DailyBudgetAccount, reservation.daily_day)
+        assert reservation.actual == root.spent == daily.spent == Decimal('0.000111')
+        assert root.reserved == daily.reserved == 0
+        assert len(db.scalars(select(AuditEvent).where(AuditEvent.effect_key ==
+            f'cost-reconcile:{execution_id}')).all()) == 1
+        assert db.scalar(select(ModelCall.id).where(ModelCall.execution_id == execution_id)) is None
 
 
 def test_replay_of_pre_call_commit_never_reissues_uncertain_request(authenticated, monkeypatch):
