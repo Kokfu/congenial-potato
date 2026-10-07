@@ -1,0 +1,445 @@
+import React, { useEffect, useState } from "react";
+import { createRoot } from "react-dom/client";
+import "./style.css";
+
+type Project = { id: string; name: string; objective: string };
+type Agent = { id: string; name: string; role: string; status: string };
+type Task = { id: string; title: string; status: string };
+type Event = {
+  id: string;
+  action: string;
+  resource: string;
+  outcome: string;
+  created_at: string;
+};
+type Approval = { id: string; resource: string; status: string; payload_hash: string; content: string };
+type Tab = "Projects" | "Agents" | "Approvals" | "Activity" | "Settings";
+const tabs: Tab[] = ["Projects", "Agents", "Approvals", "Activity", "Settings"];
+const csrf = () =>
+  decodeURIComponent(
+    document.cookie
+      .split("; ")
+      .find((x) => x.startsWith("workforce_csrf="))
+      ?.split("=")[1] ?? "",
+  );
+async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers: Record<string, string> = {
+    ...((init.headers as Record<string, string>) ?? {}),
+  };
+  if (init.method && init.method !== "GET") {
+    headers["Content-Type"] = "application/json";
+    headers["X-CSRF-Token"] = csrf();
+  }
+  const r = await fetch(path, { ...init, headers, credentials: "same-origin" });
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    throw new Error(
+      typeof body.detail === "string"
+        ? body.detail
+        : `Request failed (${r.status})`,
+    );
+  }
+  return r.json() as Promise<T>;
+}
+function App() {
+  const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
+  const [password, setPassword] = useState("");
+  const [tab, setTab] = useState<Tab>("Projects");
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [projectId, setProjectId] = useState("");
+  const [projectName, setProjectName] = useState("");
+  const [taskTitle, setTaskTitle] = useState("");
+  const [agentName, setAgentName] = useState("");
+  const [runAgentId, setRunAgentId] = useState("");
+  const [message, setMessage] = useState("");
+  const [ready, setReady] = useState("checking");
+  async function refresh() {
+    const [p, a, e, r] = await Promise.all([
+      api<Project[]>("/api/projects"),
+      api<Agent[]>("/api/agents"),
+      api<Event[]>("/api/activity"),
+      api<Approval[]>("/api/approvals"),
+    ]);
+    setProjects(p);
+    setAgents(a);
+    setRunAgentId((id) => id || a[0]?.id || "");
+    setEvents(e);
+    setApprovals(r);
+    setProjectId((id) => id || p[0]?.id || "");
+  }
+  useEffect(() => {
+    api("/api/auth/me")
+      .then(() => {
+        setLoggedIn(true);
+        refresh().catch((e) => setMessage(e.message));
+      })
+      .catch(() => setLoggedIn(false));
+    api<{ status: string }>("/health/ready")
+      .then((x) => setReady(x.status))
+      .catch(() => setReady("unavailable"));
+  }, []);
+  useEffect(() => {
+    if (loggedIn && projectId)
+      api<Task[]>(`/api/tasks?project_id=${encodeURIComponent(projectId)}`)
+        .then(setTasks)
+        .catch((e) => setMessage(e.message));
+  }, [loggedIn, projectId]);
+  async function act(fn: () => Promise<unknown>) {
+    try {
+      setMessage("");
+      await fn();
+      await refresh();
+      if (projectId)
+        setTasks(
+          await api(`/api/tasks?project_id=${encodeURIComponent(projectId)}`),
+        );
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Request failed");
+    }
+  }
+  if (loggedIn === null)
+    return <main className="center">Loading workspace…</main>;
+  if (!loggedIn)
+    return (
+      <main className="center">
+        <form
+          className="login"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            try {
+              await api("/api/auth/login", {
+                method: "POST",
+                body: JSON.stringify({ password }),
+              });
+              setPassword("");
+              setLoggedIn(true);
+              await refresh();
+            } catch (error) {
+              setMessage(
+                error instanceof Error ? error.message : "Login failed",
+              );
+            }
+          }}
+        >
+          <span className="eyebrow">PRIVATE WORKSPACE</span>
+          <h1>Workforce</h1>
+          <p>Sign in to manage agents and projects.</p>
+          <label>
+            Owner password
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </label>
+          <button>Sign in</button>
+          {message && (
+            <p className="error" role="alert">
+              {message}
+            </p>
+          )}
+        </form>
+      </main>
+    );
+  return (
+    <div className="shell">
+      <aside>
+        <div className="brand">
+          <span className="mark">W</span>
+          <div>
+            <b>Workforce</b>
+            <small>Control workspace</small>
+          </div>
+        </div>
+        <nav>
+          {tabs.map((item) => (
+            <button
+              key={item}
+              className={tab === item ? "active" : ""}
+              onClick={() => setTab(item)}
+            >
+              {item}
+              {item === "Approvals" && approvals.length > 0 && (
+                <em>{approvals.length}</em>
+              )}
+            </button>
+          ))}
+        </nav>
+        <div className="foot">● &nbsp; Local workspace</div>
+      </aside>
+      <main>
+        <header>
+          <div>
+            <span className="eyebrow">WORKSPACE / {tab.toUpperCase()}</span>
+            <h1>{tab}</h1>
+          </div>
+          <button className="quiet" onClick={() => act(refresh)}>
+            Refresh
+          </button>
+        </header>
+        {message && (
+          <div className="banner" role="alert">
+            {message}
+            <button onClick={() => setMessage("")}>Dismiss</button>
+          </div>
+        )}
+        {tab === "Projects" && (
+          <>
+            <section className="panel">
+              <h2>Projects</h2>
+              <form
+                className="inline"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  act(async () => {
+                    const p = await api<Project>("/api/projects", {
+                      method: "POST",
+                      body: JSON.stringify({ name: projectName }),
+                    });
+                    setProjectName("");
+                    setProjectId(p.id);
+                  });
+                }}
+              >
+                <input
+                  placeholder="New project name"
+                  value={projectName}
+                  onChange={(e) => setProjectName(e.target.value)}
+                  required
+                />
+                <button>Create project</button>
+              </form>
+              <div className="chips">
+                {projects.map((p) => (
+                  <button
+                    key={p.id}
+                    className={projectId === p.id ? "chosen" : ""}
+                    onClick={() => setProjectId(p.id)}
+                  >
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            </section>
+            {projectId && (
+              <section className="panel">
+                <h2>Tasks</h2>
+                {agents.length > 0 && (
+                  <label className="run-agent">
+                    Agent for fixture
+                    <select
+                      value={runAgentId}
+                      onChange={(e) => setRunAgentId(e.target.value)}
+                    >
+                      {agents.map((agent) => (
+                        <option key={agent.id} value={agent.id}>
+                          {agent.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <form
+                  className="inline"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    act(async () => {
+                      await api("/api/tasks", {
+                        method: "POST",
+                        body: JSON.stringify({
+                          project_id: projectId,
+                          title: taskTitle,
+                        }),
+                      });
+                      setTaskTitle("");
+                    });
+                  }}
+                >
+                  <input
+                    placeholder="New task"
+                    value={taskTitle}
+                    onChange={(e) => setTaskTitle(e.target.value)}
+                    required
+                  />
+                  <button>Add task</button>
+                </form>
+                {tasks.length === 0 && <p className="muted">No tasks yet.</p>}
+                {tasks.map((t) => (
+                  <div className="row" key={t.id}>
+                    <div>
+                      <strong>{t.title}</strong>
+                      <small>{t.id.slice(0, 8)}</small>
+                    </div>
+                    <div className="actions">
+                      <span className="badge">{t.status}</span>
+                      {t.status === "backlog" && agents.length > 0 && (
+                        <button
+                          className="quiet"
+                          onClick={() =>
+                            act(async () => {
+                              await api(`/api/tasks/${t.id}/dispatch`, {
+                                method: "POST",
+                                body: JSON.stringify({
+                                  agent_id: runAgentId,
+                                  root_cap: "1.00",
+                                }),
+                              });
+                            })
+                          }
+                        >
+                          Run fixture
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </section>
+            )}
+          </>
+        )}
+        {tab === "Agents" && (
+          <section className="panel">
+            <h2>Agents</h2>
+            <p className="muted">
+              Stable identities and versioned config. This foundation uses a
+              fake provider only.
+            </p>
+            <form
+              className="inline"
+              onSubmit={(e) => {
+                e.preventDefault();
+                act(async () => {
+                  await api("/api/agents", {
+                    method: "POST",
+                    body: JSON.stringify({
+                      name: agentName,
+                      role: "specialist",
+                      instructions: "Work only on assigned project tasks.",
+                      provider_connection: "fixture",
+                      model_id: "fake-v1",
+                    }),
+                  });
+                  setAgentName("");
+                });
+              }}
+            >
+              <input
+                placeholder="Agent name"
+                value={agentName}
+                onChange={(e) => setAgentName(e.target.value)}
+                required
+              />
+              <button>Add agent</button>
+            </form>
+            {agents.map((a) => (
+              <div className="row" key={a.id}>
+                <div>
+                  <strong>{a.name}</strong>
+                  <small>
+                    {a.role} · {a.id.slice(0, 8)}
+                  </small>
+                </div>
+                <div className="actions">
+                  <span className="badge">{a.status}</span>
+                  {projectId && (
+                    <button
+                      className="quiet"
+                      onClick={() =>
+                        act(async () => {
+                          await api(`/api/agents/${a.id}/grants`, {
+                            method: "POST",
+                            body: JSON.stringify({
+                              project_id: projectId,
+                              action: "project.execute",
+                              allowed: true,
+                            }),
+                          });
+                        })
+                      }
+                    >
+                      Grant project execution
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </section>
+        )}
+        {tab === "Approvals" && (
+          <section className="panel">
+            <h2>Pending approvals</h2>
+            <p className="muted">Review the exact synthetic artifact content before authorizing its immutable version.</p>
+            {approvals.length === 0 ? (
+              <p className="empty">Nothing needs approval.</p>
+            ) : (
+              approvals.map((a) => (
+                <div className="row" key={a.id}>
+                  <div><strong>{a.resource}</strong><small>{a.content}</small><small>SHA-256 proposal: {a.payload_hash}</small></div>
+                  <div className="actions">
+                    {([true, false] as const).map((approved) => (
+                      <button key={String(approved)} className="quiet" onClick={() => act(() => api(`/api/approvals/${a.id}/decision`, {
+                        method: "POST", body: JSON.stringify({ approved, payload_hash: a.payload_hash }),
+                      }))}>{approved ? "Approve artifact" : "Reject"}</button>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </section>
+        )}
+        {tab === "Activity" && (
+          <section className="panel">
+            <h2>Recent activity</h2>
+            {events.map((a) => (
+              <div className="row" key={a.id}>
+                <div>
+                  <strong>{a.action}</strong>
+                  <small>
+                    {a.resource} · {new Date(a.created_at).toLocaleString()}
+                  </small>
+                </div>
+                <span className="badge">{a.outcome}</span>
+              </div>
+            ))}
+          </section>
+        )}
+        {tab === "Settings" && (
+          <section className="panel">
+            <h2>Workspace status</h2>
+            <div className="row">
+              API readiness<strong>{ready}</strong>
+            </div>
+            <div className="row">
+              Model calls<strong>Fixture only</strong>
+            </div>
+            <div className="row">
+              Access<strong>Private owner</strong>
+            </div>
+            <button
+              className="quiet logout"
+              onClick={() =>
+                act(async () => {
+                  await api("/api/auth/logout", { method: "POST" });
+                  setLoggedIn(false);
+                })
+              }
+            >
+              Sign out
+            </button>
+          </section>
+        )}
+      </main>
+    </div>
+  );
+}
+createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);
