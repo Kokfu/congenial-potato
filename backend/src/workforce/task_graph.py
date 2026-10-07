@@ -19,7 +19,8 @@ def add_dependency(db: Session, dependent_id: str,
     # Every graph mutation locks its project first. Dispatch locks the task;
     # the following task lock ensures an edge cannot land after dispatch.
     db.execute(select(Project).where(Project.id == dependent.project_id).with_for_update()).scalar_one()
-    dependent = db.execute(select(Task).where(Task.id == dependent_id).with_for_update()).scalar_one()
+    dependent = db.execute(select(Task).where(Task.id == dependent_id).with_for_update()
+                           .execution_options(populate_existing=True)).scalar_one()
     prerequisite = db.get(Task, prerequisite_id)
     if prerequisite is None or prerequisite.project_id != dependent.project_id:
         raise TaskGraphError('prerequisite_missing')

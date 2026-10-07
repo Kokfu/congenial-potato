@@ -15,6 +15,7 @@ from .security import clear_auth_cookies, current_session, login, require_csrf, 
 from .services import AccessDenied, authorize_agent_project
 from .task_graph import dependencies_satisfied
 from .task_assignment import AssignmentError, assign_executor
+from .cancellation import CancellationError, cancel_subtree
 from .artifacts import proposal_valid
 from . import providers
 from .providers import ProviderError
@@ -234,18 +235,13 @@ def get_execution(execution_id: str, _: OwnerSession = Depends(current_session),
 
 @app.post('/api/executions/{execution_id}/cancel')
 def cancel_execution(execution_id: str, session: OwnerSession = Depends(require_csrf), db: Session = Depends(db_session)):
-    execution = db.execute(select(Execution).where(Execution.id == execution_id).with_for_update()).scalar_one_or_none()
-    if execution is None:
-        raise HTTPException(404, 'Execution not found')
-    if execution.status == 'succeeded' and db.scalar(select(Approval.id).where(
-        Approval.execution_id == execution_id, Approval.status.in_(['pending', 'approved'])).limit(1)) is None:
-        raise HTTPException(409, 'Execution already succeeded')
-    execution.cancelled = True
-    execution.status = 'cancelled'
-    db.get(Task, execution.task_id).status = 'cancelled'
-    db.add(AuditEvent(actor=session.owner_id, action='execution.cancel', resource=execution.id, outcome='allowed'))
+    try:
+        execution, changed = cancel_subtree(db, execution_id, session.owner_id)
+    except CancellationError as exc:
+        raise HTTPException(404, 'Execution not found') from exc
     db.commit()
-    return {'id': execution.id, 'status': execution.status}
+    return {'id': execution.id, 'status': execution.status,
+            'cancelled': execution.cancelled, 'cancelled_count': changed}
 
 
 @app.get('/api/approvals')
@@ -316,3 +312,5 @@ from .plan_api import router as plan_router  # noqa: E402
 app.include_router(plan_router)
 from .delegation_api import router as delegation_router  # noqa: E402
 app.include_router(delegation_router)
+from .message_api import router as message_router  # noqa: E402
+app.include_router(message_router)

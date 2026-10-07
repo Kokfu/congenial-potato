@@ -112,7 +112,8 @@ def admit(db: Session, proposal_id: str, expected_hash: str, owner_id: str) -> P
     if candidate is None:
         raise PlanError('proposal_missing')
     project = db.execute(select(Project).where(Project.id == candidate.project_id).with_for_update()).scalar_one()
-    proposal = db.execute(select(PlanProposal).where(PlanProposal.id == proposal_id).with_for_update()).scalar_one()
+    proposal = db.execute(select(PlanProposal).where(PlanProposal.id == proposal_id).with_for_update()
+                          .execution_options(populate_existing=True)).scalar_one()
     if proposal.payload_hash != expected_hash or plan_hash(proposal.payload) != expected_hash:
         raise PlanError('proposal_changed')
     if proposal.status == 'admitted':

@@ -43,11 +43,16 @@ def delegate(db: Session, parent_id: str, data: DelegationInput,
     if parent_hint is None:
         raise DelegationError('source_missing')
     parent_task_hint = db.get(Task, parent_hint.task_id)
-    # Serialize work keys, delegation counts and root checks in one project.
+    # Root lock serializes all child admission with tree cancellation.
+    root = db.execute(select(Execution).where(Execution.id == parent_hint.root_id)
+                      .with_for_update().execution_options(populate_existing=True)).scalar_one_or_none()
+    if root is None or root.cancelled:
+        raise DelegationError('root_cancelled')
+    # Serialize work keys and delegation counts within the project.
     db.execute(select(Project).where(Project.id == parent_task_hint.project_id)
                .with_for_update()).scalar_one()
     parent = db.execute(select(Execution).where(Execution.id == parent_id)
-                        .with_for_update()).scalar_one()
+                        .with_for_update().execution_options(populate_existing=True)).scalar_one()
     source_task = db.get(Task, parent.task_id)
     digest = payload_hash(data)
     existing = db.scalar(select(Execution).where(
@@ -64,9 +69,7 @@ def delegate(db: Session, parent_id: str, data: DelegationInput,
         raise DelegationError('source_role')
     if parent.depth >= MAX_DEPTH:
         raise DelegationError('depth_limit')
-    root = db.execute(select(Execution).where(Execution.id == parent.root_id)
-                      .with_for_update()).scalar_one_or_none()
-    if root is None or root.cancelled:
+    if root.cancelled:
         raise DelegationError('root_cancelled')
     account = db.execute(select(BudgetAccount).where(BudgetAccount.root_id == root.id)
                          .with_for_update()).scalar_one_or_none()
