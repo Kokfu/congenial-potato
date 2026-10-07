@@ -11,6 +11,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 3. [MVP and implementation phases](mvp-plan.md)
 4. [Phase 0 validation status and protocol](research/phase-0-validation.md)
 5. [Provider SDK offline validation](research/provider-sdk-validation.md)
+6. [Shared cost ledger fixture validation](research/shared-cost-ledger-validation.md)
 
 ## Architecture
 

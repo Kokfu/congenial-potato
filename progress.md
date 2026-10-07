@@ -44,7 +44,8 @@ Updated: 2026-10-07. This is the execution ledger for the approved AI workforce 
 - [x] **2.3 Worker boundary and limits.** Route fixture generation through the provider registry without provider-name branches in orchestration. Validate required capabilities and reserve shared root budget before a model call. Record actual provider, model and usage with unknown values preserved.
 - [x] **2.4 Failure/restart contracts.** Test switching, incompatible capabilities, timeout, cancellation and replay with deterministic fake adapters and PostgreSQL/DBOS. Then run the private UI flow and Compose restart checks.
 - [x] **2.5a Native SDK offline adapters.** Verify current OpenAI and Anthropic SDK versions, licenses and APIs; normalize text generation and errors through in-memory HTTP fixtures. Use private absolute secret file references. Build the backend image with pinned SDKs.
-- [ ] **2.5b Native activation gate.** Integrate adapters into the application registry only after per-model capability manifests, conservative cost bounds, root/daily caps, credential policy, cancellation and uncertain-outcome handling are enforceable. Keep live calls opt-in and disabled by default; do not spend money during fixture validation.
+- [x] **2.5b Shared cost reservation ledger.** Add operator-supplied price envelopes, UTC daily budget accounts and root/daily holds. Serialize concurrent reservations, keep unknown outcomes reserved, reconcile confirmed cost once and record overruns. Validate in PostgreSQL and Compose without real charges.
+- [ ] **2.5c Native activation gate.** Connect native adapters to the application registry only after price-envelope validation, live root/daily cap enforcement in the worker, credential policy, cancellation and uncertain-outcome handling are verified end to end. Keep live calls opt-in and disabled by default; do not spend money during fixture validation.
 
 ## Verified Phase 2 fixture evidence
 
@@ -54,6 +55,7 @@ Updated: 2026-10-07. This is the execution ledger for the approved AI workforce 
 - Replayed a completed beta outbox dispatch after restarting the worker. Model-call and successful-completion audit counts remained 15 each, and undelivered outbox count returned to zero. No paid model requests or production credentials were used.
 - Native SDK validation: OpenAI Python 3.26.0 (Apache-2.0) and Anthropic Python 1.11.0 (MIT) were installed and their current models/generation methods exercised through `httpx2.MockTransport`; native adapters remain unregistered. Exact commands, response mappings and limits are in `docs/research/provider-sdk-validation.md`. Phase 2 remains open for live activation policy and cost controls. Provider-specific workflow version migrations need a drain/rollout procedure.
 - The backend image built with both pinned SDKs; a container imported both native adapters and reported the expected versions. The full PostgreSQL and offline SDK suite passed 17 tests. No real provider endpoint was contacted.
+- Shared cost ledger validation: 21 PostgreSQL/offline SDK tests passed. Concurrent roots could reserve the daily remainder once; a duplicate key held funds once; an unknown outcome retained its hold until settlement; and an overrun was recorded and blocked subsequent holds. A fresh `PriceEnvelope` produced a synthetic upper bound. Compose migrated to `c391e5bc912a`, API/DB/web were healthy, and the existing fixture smoke test passed. This ledger is not yet wired to native calls and cannot authorize live spend.
 
 ## Working rules and evidence
 
