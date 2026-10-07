@@ -1,7 +1,7 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, JSON
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 from .db import Base
 
@@ -155,12 +155,23 @@ class BudgetAccount(Base):
     currency: Mapped[str] = mapped_column(String(3), default='USD')
 
 
+class DailyBudgetAccount(Base):
+    __tablename__ = 'daily_budget_accounts'
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    cap: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    reserved: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0)
+    spent: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0)
+    currency: Mapped[str] = mapped_column(String(3), default='USD')
+
+
 class BudgetReservation(Base):
     __tablename__ = 'budget_reservations'
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     root_id: Mapped[str] = mapped_column(ForeignKey('budget_accounts.root_id'))
     invocation_key: Mapped[str] = mapped_column(String(160), unique=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    daily_day: Mapped[date | None] = mapped_column(ForeignKey('daily_budget_accounts.day'))
+    actual: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
     status: Mapped[str] = mapped_column(String(30), default='reserved')
 
 
