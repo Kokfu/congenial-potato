@@ -161,12 +161,13 @@ def test_concurrent_same_reservation_key_is_idempotent():
 def test_exact_artifact_approval_and_stale_replacement(authenticated):
     from datetime import timedelta
     from workforce.artifacts import SCHEMA_HASH, apply_approved_artifacts, payload_hash, propose_fixture_artifact
-    from workforce.models import AgentConfigVersion, Approval, ArtifactVersion, AuditEvent, Execution, ModelCall, Task, now
+    from workforce.models import AgentConfigVersion, Approval, ArtifactVersion, AuditEvent, Execution, ModelCall, ProjectActivityCursor, Task, now
     with session_factory()() as db:
         project = Project(name='Artifact project')
         agent = Agent(name='Artifact agent', role='specialist')
         db.add_all([project, agent])
         db.flush()
+        db.add(ProjectActivityCursor(project_id=project.id, sequence=0))
         config = AgentConfigVersion(agent_id=agent.id, version=1, instructions='Fixture', provider_connection='fixture', model_id='fake-v1')
         task = Task(project_id=project.id, title='Write fixture', status='review')
         db.add_all([config, task, AgentProjectGrant(agent_id=agent.id, project_id=project.id, action='project.execute', allowed=True)])

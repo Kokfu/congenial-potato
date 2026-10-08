@@ -128,6 +128,7 @@ def complete_step(execution_id: str, result: dict) -> str:
             db.add(ModelCall(execution_id=execution_id, provider=config.provider_connection,
                              model_id=response.actual_model, provider_request_id=response.provider_request_id,
                              usage=response.usage.model_dump(mode='json'), result=response.content))
+        release_reservation(db, execution)
         if (config.config or {}).get('output_contract') == 'collaboration.v1':
             record_candidate(db, execution, response.content)
         elif (config.config or {}).get('output_contract') == 'memory.v1':
@@ -136,7 +137,6 @@ def complete_step(execution_id: str, result: dict) -> str:
             record_tool_output(db, execution, response.content)
         else:
             propose_fixture_artifact(db, execution, response.content)
-        release_reservation(db, execution)
         task.status = 'review'
         execution.status = 'succeeded'
         if db.scalar(select(AuditEvent.id).where(AuditEvent.effect_key == f'fixture:{execution_id}')) is None:

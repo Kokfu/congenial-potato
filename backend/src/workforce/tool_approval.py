@@ -10,6 +10,7 @@ from .artifact_read import ArtifactIntegrityError, read_version
 from .models import (Approval, ArtifactVersion, AuditEvent, Execution, Task,
                      ToolInvocation, now)
 from .tool_policy import evaluate_tool_policy
+from .activity import record_activity
 
 
 class ToolApprovalError(ValueError):
@@ -59,6 +60,9 @@ def create_tool_approval(db: Session, invocation: ToolInvocation) -> Approval:
                       resource=invocation.id, outcome='pending',
                       detail={'approval_id': approval.id,
                               'payload_hash': approval.payload_hash}))
+    record_activity(db, project_id=invocation.project_id, actor='worker',
+                    action='tool.approval.create', resource=invocation.id,
+                    outcome='pending')
     return approval
 
 
@@ -107,6 +111,9 @@ def review_tool(db: Session, *, invocation_id: str, expected_hash: str,
         invocation.status = 'rejected'
         db.add(AuditEvent(actor=owner_id, action='tool.approval', resource=invocation.id,
                           outcome='rejected', detail={'approval_id': approval.id}))
+        record_activity(db, project_id=invocation.project_id, actor=owner_id,
+                        action='tool.approval', resource=invocation.id,
+                        outcome='rejected')
         return invocation, approval, None
     reason = _invalid_reason(db, invocation, approval, source)
     if reason is not None:
@@ -115,6 +122,9 @@ def review_tool(db: Session, *, invocation_id: str, expected_hash: str,
         db.add(AuditEvent(actor=owner_id, action='tool.approval', resource=invocation.id,
                           outcome=approval.status,
                           detail={'approval_id': approval.id, 'reason': reason}))
+        record_activity(db, project_id=invocation.project_id, actor=owner_id,
+                        action='tool.approval', resource=invocation.id,
+                        outcome=approval.status)
         return invocation, approval, reason
     approval.status = 'approved'
     approval.decision_payload_hash = approval.payload_hash
@@ -122,6 +132,9 @@ def review_tool(db: Session, *, invocation_id: str, expected_hash: str,
     db.add(AuditEvent(actor=owner_id, action='tool.approval', resource=invocation.id,
                       outcome='approved', detail={'approval_id': approval.id,
                                                   'payload_hash': approval.payload_hash}))
+    record_activity(db, project_id=invocation.project_id, actor=owner_id,
+                    action='tool.approval', resource=invocation.id,
+                    outcome='approved')
     return invocation, approval, None
 
 

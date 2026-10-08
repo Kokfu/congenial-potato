@@ -1,6 +1,6 @@
 # MVP plan
 
-Status: architecture approved; Phase 0, the foundation, and Phase 3–5 fixture gates are complete. Phase 6 scheduling and activity are next; native activation remains gated.
+Status: architecture approved; Phase 0, the foundation, and Phase 3–6 fixture gates are complete. Phase 7 bounded external read is next; native activation remains gated.
 
 ## Proof scenario
 

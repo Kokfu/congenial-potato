@@ -47,8 +47,13 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(160))
     objective: Mapped[str] = mapped_column(Text, default='')
     plan_revision: Mapped[int] = mapped_column(Integer, default=1)
-    activity_seq: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ProjectActivityCursor(Base):
+    __tablename__ = 'project_activity_cursors'
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'), primary_key=True)
+    sequence: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class ProjectActivity(Base):

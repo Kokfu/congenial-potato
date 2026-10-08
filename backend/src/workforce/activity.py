@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .db import db_session, session_factory
-from .models import OwnerSession, Project, ProjectActivity
+from .models import OwnerSession, Project, ProjectActivity, ProjectActivityCursor
 from .security import current_session
 
 router = APIRouter()
@@ -16,10 +16,10 @@ router = APIRouter()
 
 def record_activity(db: Session, *, project_id: str, actor: str, action: str,
                     resource: str, outcome: str) -> ProjectActivity:
-    project = db.execute(select(Project).where(Project.id == project_id)
-                         .with_for_update()).scalar_one()
-    project.activity_seq += 1
-    row = ProjectActivity(project_id=project_id, sequence=project.activity_seq,
+    cursor = db.execute(select(ProjectActivityCursor).where(
+        ProjectActivityCursor.project_id == project_id).with_for_update()).scalar_one()
+    cursor.sequence += 1
+    row = ProjectActivity(project_id=project_id, sequence=cursor.sequence,
                           actor=actor, action=action, resource=resource,
                           outcome=outcome)
     db.add(row)

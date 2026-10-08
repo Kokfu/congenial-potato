@@ -11,6 +11,7 @@ from .delegation import DelegationInput, delegate
 from .messages import MessageInput, send_message
 from .models import AuditEvent, CollaborationProposal, Execution, Task
 from .plans import PlanInput, PlanTask, admit, propose
+from .activity import record_activity
 
 MAX_PROPOSAL_BYTES = 16384
 
@@ -84,6 +85,7 @@ def record_candidate(db: Session, execution: Execution,
     if db.scalar(select(CollaborationProposal.id).where(
         CollaborationProposal.source_execution_id == execution.id)) is not None:
         return None
+    project_id = db.get(Task, execution.task_id).project_id
     try:
         payload = parse_candidate(content)
     except CollaborationError as exc:
@@ -91,8 +93,10 @@ def record_candidate(db: Session, execution: Execution,
                           resource=execution.id, outcome='denied',
                           effect_key=f'collaboration.parse:{execution.id}',
                           detail={'reason': exc.code}))
+        record_activity(db, project_id=project_id, actor=execution.agent_id,
+                        action='collaboration.parse', resource=execution.id,
+                        outcome='denied')
         return None
-    project_id = db.get(Task, execution.task_id).project_id
     row = CollaborationProposal(source_execution_id=execution.id,
                                 project_id=project_id, kind=payload['kind'],
                                 payload=payload, payload_hash=proposal_hash(payload),
@@ -103,6 +107,9 @@ def record_candidate(db: Session, execution: Execution,
                       resource=row.id, outcome='pending',
                       detail={'kind': row.kind, 'payload_hash': row.payload_hash,
                               'source_execution_id': execution.id}))
+    record_activity(db, project_id=project_id, actor=execution.agent_id,
+                    action='collaboration.propose', resource=row.id,
+                    outcome='pending')
     return row
 
 
@@ -155,4 +162,7 @@ def decide_candidate(db: Session, proposal_id: str, expected_hash: str,
                       resource=row.id, outcome=row.status,
                       detail={'kind': row.kind, 'payload_hash': row.payload_hash,
                               'admitted_ref': row.admitted_ref}))
+    record_activity(db, project_id=row.project_id, actor=owner_id,
+                    action='collaboration.decision', resource=row.id,
+                    outcome=row.status)
     return row
