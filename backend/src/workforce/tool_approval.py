@@ -127,9 +127,22 @@ def review_tool(db: Session, *, invocation_id: str, expected_hash: str,
 
 def _invalid_reason(db: Session, invocation: ToolInvocation,
                     approval: Approval, source: Execution) -> str | None:
-    from .tool_gateway import parse_tool_output, ToolProposalError
     if approval.expires_at <= now():
         return 'expired'
+    payload = exact_payload(invocation)
+    if (_digest(payload) != approval.payload_hash or approval.payload != payload or
+        approval.schema_hash != invocation.schema_hash or
+        approval.resource != invocation.resource or
+        approval.target_version != payload['target_version'] or
+        approval.execution_id != invocation.execution_id):
+        return 'approval_payload_changed'
+    return invocation_invalid_reason(db, invocation, source,
+                                     expected_policy='require_approval')
+
+
+def invocation_invalid_reason(db: Session, invocation: ToolInvocation,
+                              source: Execution, expected_policy: str) -> str | None:
+    from .tool_gateway import parse_tool_output, ToolProposalError
     task = db.get(Task, source.task_id)
     if source.cancelled or source.status != 'succeeded' or task is None or task.project_id != invocation.project_id:
         return 'source_unavailable'
@@ -144,19 +157,11 @@ def _invalid_reason(db: Session, invocation: ToolInvocation,
         arguments != invocation.arguments or resource != invocation.resource or
         argument_hash != invocation.argument_hash):
         return 'schema_or_arguments_changed'
-    payload = exact_payload(invocation)
-    if (_digest(payload) != approval.payload_hash or approval.payload != payload or
-        approval.schema_hash != invocation.schema_hash or
-        approval.resource != invocation.resource or
-        approval.target_version != payload['target_version'] or
-        approval.execution_id != invocation.execution_id):
-        return 'approval_payload_changed'
     decision = evaluate_tool_policy(db, agent_id=source.agent_id,
                                     project_id=invocation.project_id,
                                     action=invocation.action,
                                     resource=invocation.resource)
-    if (decision.effect != 'require_approval' or
-        decision.snapshot != invocation.policy_snapshot):
+    if decision.effect != expected_policy or decision.snapshot != invocation.policy_snapshot:
         return 'policy_changed'
     if not _precondition_current(db, invocation):
         return 'target_changed'

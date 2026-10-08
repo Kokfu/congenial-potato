@@ -233,6 +233,16 @@ class ToolInvocation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class SyntheticToolEffect(Base):
+    __tablename__ = 'synthetic_tool_effects'
+    invocation_key: Mapped[str] = mapped_column(String(36), primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(36))
+    action: Mapped[str] = mapped_column(String(120))
+    argument_hash: Mapped[str] = mapped_column(String(64))
+    result: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class ArtifactVersion(Base):
     __tablename__ = 'artifact_versions'
     __table_args__ = (UniqueConstraint('artifact_id', 'version'),)

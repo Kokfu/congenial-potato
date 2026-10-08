@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .db import db_session
-from .models import Approval, OwnerSession, Project, ToolInvocation
+from .models import Approval, OwnerSession, Project, SyntheticToolEffect, ToolInvocation
 from .security import current_session, require_csrf
 from .tool_approval import ToolApprovalError, review_tool
 
@@ -49,12 +49,14 @@ def list_tool_invocations(project_id: str,
     result = []
     for row in rows:
         approval = db.scalar(select(Approval).where(Approval.tool_invocation_id == row.id))
+        effect = db.get(SyntheticToolEffect, row.id)
         result.append({'id': row.id, 'execution_id': row.execution_id,
                        'action': row.action, 'definition_version': row.definition_version,
                        'schema_hash': row.schema_hash, 'argument_hash': row.argument_hash,
                        'arguments': row.arguments, 'resource': row.resource,
                        'effect': row.effect, 'policy_decision': row.policy_decision,
                        'policy_snapshot': row.policy_snapshot, 'status': row.status,
+                       'result': effect.result if effect else None,
                        'approval': ({'id': approval.id, 'status': approval.status,
                                      'payload_hash': approval.payload_hash,
                                      'expires_at': approval.expires_at,

@@ -33,6 +33,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 25. [Typed tool gateway](research/tool-gateway-validation.md)
 26. [Tool resource policy](research/tool-policy-validation.md)
 27. [Durable tool approval](research/tool-approval-validation.md)
+28. [Synthetic tool effects](research/tool-effect-validation.md)
 
 ## Architecture
 

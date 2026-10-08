@@ -103,7 +103,7 @@ Updated: 2026-10-08. This is the execution ledger for the approved AI workforce 
 - [x] **5.1 Typed tool gateway.** Register versioned tool definitions and validated proposals. Canonicalize project resources and deny unknown tools, schema versions and arguments before any effect. Evidence: `docs/research/tool-gateway-validation.md`.
 - [x] **5.2 Policy and resource authority.** Enforce default deny, project and agent ceilings, and explicit-deny precedence for each canonical tool resource at proposal admission. Reuse the evaluator at approval and effect execution in tasks 5.3–5.4. Keep MCP as transport only. Evidence: `docs/research/tool-policy-validation.md`.
 - [x] **5.3 Exact-effect durable approval.** Bind approval to canonical arguments, schema, target precondition and expiry. Restart around approval and invalidate on change, revocation or cancellation. Evidence: `docs/research/tool-approval-validation.md`.
-- [ ] **5.4 Idempotent synthetic effects.** Persist invocations and use an isolated fake effect ledger to verify replay, duplicate dispatch, unknown outcomes and reconciliation without external writes.
+- [x] **5.4 Idempotent synthetic effects.** Persist invocations and use an isolated fake effect ledger to verify replay, duplicate dispatch, unknown outcomes and reconciliation without external writes. Evidence: `docs/research/tool-effect-validation.md`.
 - [ ] **5.5 Phase 5 gate.** Verify complete mediation across allowed fixture paths, concurrent budgets, audit provenance and API/worker restart. Build, run and smoke Compose before closing the fixture gate.
 
 ## Working rules and evidence
