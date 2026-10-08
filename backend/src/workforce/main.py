@@ -1,5 +1,6 @@
 from decimal import Decimal
 from pathlib import Path
+from typing import Literal
 import hashlib
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -49,6 +50,7 @@ class AgentInput(BaseModel):
     instructions: str = Field(min_length=1, max_length=20000)
     provider_connection: str = Field(min_length=1, max_length=120)
     model_id: str = Field(min_length=1, max_length=160)
+    output_contract: Literal['text', 'collaboration.v1'] = 'text'
 
 
 class TaskInput(BaseModel):
@@ -122,13 +124,17 @@ def list_agents(_: OwnerSession = Depends(current_session), db: Session = Depend
 @app.post('/api/agents', status_code=201)
 def create_agent(data: AgentInput, session: OwnerSession = Depends(require_csrf), db: Session = Depends(db_session)):
     try:
-        providers.registry.get(data.provider_connection).describe_capabilities(data.model_id)
+        capabilities = providers.registry.get(data.provider_connection).describe_capabilities(data.model_id)
     except ProviderError as exc:
         raise HTTPException(422, str(exc)) from exc
+    if data.output_contract == 'collaboration.v1' and not capabilities.structured_output:
+        raise HTTPException(422, 'Selected model lacks validated structured output')
     agent = Agent(name=data.name, role=data.role)
     db.add(agent)
     db.flush()
-    db.add(AgentConfigVersion(agent_id=agent.id, version=1, instructions=data.instructions, provider_connection=data.provider_connection, model_id=data.model_id))
+    db.add(AgentConfigVersion(agent_id=agent.id, version=1, instructions=data.instructions,
+                              provider_connection=data.provider_connection, model_id=data.model_id,
+                              config={'output_contract': data.output_contract}))
     db.add(AuditEvent(actor=session.owner_id, action='agent.create', resource=agent.id, outcome='allowed'))
     db.commit()
     return {'id': agent.id, 'name': agent.name, 'role': agent.role, 'status': agent.status}
@@ -314,3 +320,5 @@ from .delegation_api import router as delegation_router  # noqa: E402
 app.include_router(delegation_router)
 from .message_api import router as message_router  # noqa: E402
 app.include_router(message_router)
+from .collaboration_api import router as collaboration_router  # noqa: E402
+app.include_router(collaboration_router)

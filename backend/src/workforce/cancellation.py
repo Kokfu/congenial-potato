@@ -2,7 +2,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Approval, AuditEvent, Execution, Task
+from .models import Approval, AuditEvent, CollaborationProposal, Execution, Task
 
 
 class CancellationError(ValueError):
@@ -59,6 +59,15 @@ def cancel_subtree(db: Session, execution_id: str, actor: str) -> tuple[Executio
                           resource=approval.resource, outcome='invalidated',
                           detail={'execution_id': approval.execution_id,
                                   'reason': 'execution_cancelled'}))
+    proposals = db.scalars(select(CollaborationProposal).where(
+        CollaborationProposal.source_execution_id.in_(descendants),
+        CollaborationProposal.status == 'pending')
+        .with_for_update(skip_locked=True)).all()
+    for proposal in proposals:
+        proposal.status = 'invalidated'
+        db.add(AuditEvent(actor=actor, action='collaboration.decision',
+                          resource=proposal.id, outcome='invalidated',
+                          detail={'reason': 'execution_cancelled'}))
     return db.get(Execution, execution_id), changed
 
 
@@ -73,4 +82,17 @@ def invalidate_cancelled_approvals(db: Session) -> int:
                           resource=approval.resource, outcome='invalidated',
                           detail={'execution_id': approval.execution_id,
                                   'reason': 'execution_cancelled'}))
+    return len(rows)
+
+
+def invalidate_cancelled_collaboration(db: Session) -> int:
+    rows = db.scalars(select(CollaborationProposal).join(Execution,
+        CollaborationProposal.source_execution_id == Execution.id).where(
+        Execution.cancelled.is_(True), CollaborationProposal.status == 'pending')
+        .with_for_update(of=CollaborationProposal, skip_locked=True).limit(20)).all()
+    for proposal in rows:
+        proposal.status = 'invalidated'
+        db.add(AuditEvent(actor='worker', action='collaboration.decision',
+                          resource=proposal.id, outcome='invalidated',
+                          detail={'reason': 'execution_cancelled'}))
     return len(rows)

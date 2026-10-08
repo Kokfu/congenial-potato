@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { CollaborationReview } from "./CollaborationReview";
 import "./style.css";
 
 type Project = { id: string; name: string; objective: string };
@@ -29,8 +30,8 @@ type Approval = {
   payload_hash: string;
   content: string;
 };
-type Tab = "Projects" | "Agents" | "Approvals" | "Activity" | "Settings";
-const tabs: Tab[] = ["Projects", "Agents", "Approvals", "Activity", "Settings"];
+type Tab = "Projects" | "Agents" | "Approvals" | "Collaboration" | "Activity" | "Settings";
+const tabs: Tab[] = ["Projects", "Agents", "Approvals", "Collaboration", "Activity", "Settings"];
 const csrf = () =>
   decodeURIComponent(
     document.cookie
@@ -549,6 +550,14 @@ function App() {
               ))
             )}
           </section>
+        )}
+        {tab === "Collaboration" && (
+          <CollaborationReview
+            projectId={projectId}
+            projectName={projects.find((project) => project.id === projectId)?.name ?? ""}
+            api={api}
+            onError={setMessage}
+          />
         )}
         {tab === "Activity" && (
           <section className="panel">

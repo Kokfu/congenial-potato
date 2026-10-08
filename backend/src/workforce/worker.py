@@ -9,7 +9,8 @@ from .db import session_factory
 from .models import AgentConfigVersion, AuditEvent, BudgetAccount, BudgetReservation, Execution, ModelCall, Outbox, Task, now
 from .services import AccessDenied, authorize_agent_project, reserve_budget
 from .artifacts import apply_approved_artifacts, propose_fixture_artifact
-from .cancellation import invalidate_cancelled_approvals
+from .cancellation import invalidate_cancelled_approvals, invalidate_cancelled_collaboration
+from .collaboration import record_candidate
 from . import providers
 from .providers import GenerationRequest, GenerationResponse, ProviderError, TextMessage
 from .governed_call import governed_generate, price_for
@@ -40,7 +41,8 @@ def generate_step(execution_id: str) -> dict:
         request = GenerationRequest(request_id=execution_id, model_id=config.model_id,
                                     messages=(TextMessage(role='system', trust_origin='human', text=config.instructions),
                                               TextMessage(role='user', trust_origin='human', text=task.title)),
-                                    max_output_tokens=128,
+                                    max_output_tokens=(512 if (config.config or {}).get('output_contract') == 'collaboration.v1' else 128),
+                                    require_structured_output=(config.config or {}).get('output_contract') == 'collaboration.v1',
                                     deadline_at=datetime.now(timezone.utc) + timedelta(
                                         seconds=get_settings().model_call_timeout_seconds))
         connection = config.provider_connection
@@ -107,7 +109,10 @@ def complete_step(execution_id: str, result: dict) -> str:
             db.add(ModelCall(execution_id=execution_id, provider=config.provider_connection,
                              model_id=response.actual_model, provider_request_id=response.provider_request_id,
                              usage=response.usage.model_dump(mode='json'), result=response.content))
-        propose_fixture_artifact(db, execution, response.content)
+        if (config.config or {}).get('output_contract') == 'collaboration.v1':
+            record_candidate(db, execution, response.content)
+        else:
+            propose_fixture_artifact(db, execution, response.content)
         release_reservation(db, execution)
         task.status = 'review'
         execution.status = 'succeeded'
@@ -170,7 +175,9 @@ def main() -> None:
             dispatch_once()
             apply_approved_artifacts()
             with session_factory()() as db:
-                if invalidate_cancelled_approvals(db):
+                approvals = invalidate_cancelled_approvals(db)
+                proposals = invalidate_cancelled_collaboration(db)
+                if approvals or proposals:
                     db.commit()
             time.sleep(0.5)
     finally:
