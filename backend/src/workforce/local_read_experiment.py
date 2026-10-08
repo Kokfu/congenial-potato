@@ -40,6 +40,44 @@ class ReadResult(BaseModel):
     trust_origin: str = 'external_claim'
 
 
+def bounded_text_response(response, connection, request: ReadRequest,
+                          deadline: float) -> ReadResult:
+    """Validate a single response without following links or decoding compression."""
+    if response.status != 200:
+        raise ReadDenied(f'Fixture returned HTTP {response.status}')
+    media_type = response.getheader('Content-Type', '').split(';', 1)[0].lower()
+    if media_type not in ('text/plain', 'text/html'):
+        raise ReadDenied('Fixture media type is unavailable')
+    if response.getheader('Content-Encoding', 'identity').lower() != 'identity':
+        raise ReadDenied('Compressed fixture responses are unavailable')
+    length = response.getheader('Content-Length')
+    if length is not None and (not length.isdecimal() or int(length) > request.max_bytes):
+        raise ReadDenied('Fixture response exceeds byte limit')
+    chunks: list[bytes] = []
+    size = 0
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ReadDenied('Fixture deadline exceeded')
+        if connection.sock is not None:
+            connection.sock.settimeout(remaining)
+        chunk = response.read(min(8192, request.max_bytes + 1 - size))
+        if not chunk:
+            break
+        size += len(chunk)
+        if size > request.max_bytes:
+            raise ReadDenied('Fixture response exceeds byte limit')
+        chunks.append(chunk)
+    body = b''.join(chunks)
+    try:
+        content = body.decode('utf-8')
+    except UnicodeDecodeError as exc:
+        raise ReadDenied('Fixture text is not UTF-8') from exc
+    return ReadResult(url=request.url, retrieved_at=datetime.now(timezone.utc),
+                      media_type=media_type, size=size,
+                      sha256=hashlib.sha256(body).hexdigest(), text=content)
+
+
 def read_local_fixture(request: ReadRequest, grant: LocalReadGrant,
                        *, test_transport_enabled: bool = False) -> ReadResult:
     """Make one bounded loopback GET only when a test harness opts in."""
@@ -67,39 +105,7 @@ def read_local_fixture(request: ReadRequest, grant: LocalReadGrant,
             'Accept': 'text/plain, text/html', 'Accept-Encoding': 'identity',
             'User-Agent': 'workforce-local-read-fixture/1'})
         response = connection.getresponse()
-        if response.status != 200:
-            raise ReadDenied(f'Fixture returned HTTP {response.status}')
-        media_type = response.getheader('Content-Type', '').split(';', 1)[0].lower()
-        if media_type not in ('text/plain', 'text/html'):
-            raise ReadDenied('Fixture media type is unavailable')
-        if response.getheader('Content-Encoding', 'identity').lower() != 'identity':
-            raise ReadDenied('Compressed fixture responses are unavailable')
-        length = response.getheader('Content-Length')
-        if length is not None and (not length.isdecimal() or int(length) > request.max_bytes):
-            raise ReadDenied('Fixture response exceeds byte limit')
-        chunks: list[bytes] = []
-        size = 0
-        while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise ReadDenied('Fixture deadline exceeded')
-            if connection.sock is not None:
-                connection.sock.settimeout(remaining)
-            chunk = response.read(min(8192, request.max_bytes + 1 - size))
-            if not chunk:
-                break
-            size += len(chunk)
-            if size > request.max_bytes:
-                raise ReadDenied('Fixture response exceeds byte limit')
-            chunks.append(chunk)
-        body = b''.join(chunks)
-        try:
-            content = body.decode('utf-8')
-        except UnicodeDecodeError as exc:
-            raise ReadDenied('Fixture text is not UTF-8') from exc
-        return ReadResult(url=request.url, retrieved_at=datetime.now(timezone.utc),
-                          media_type=media_type, size=size,
-                          sha256=hashlib.sha256(body).hexdigest(), text=content)
+        return bounded_text_response(response, connection, request, deadline)
     except (OSError, HTTPException, socket.timeout) as exc:
         raise ReadDenied('Fixture connection failed or timed out') from exc
     finally:
