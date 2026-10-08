@@ -70,8 +70,8 @@ def canonical_public_host(host: str) -> str:
 
 
 def canonical_public_url(value: str) -> tuple[str, int]:
-    if (len(value) > 2048 or value != value.strip() or
-            any(ord(char) < 32 or ord(char) == 127 for char in value)
+    if (len(value) > 2048 or '#' in value or
+            any(char.isspace() or ord(char) == 127 for char in value)
             or '\\' in value):
         raise ReadDenied('Invalid destination URL')
     try:

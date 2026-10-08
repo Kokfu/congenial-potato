@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -16,7 +17,7 @@ def headers(client):
             'X-CSRF-Token': client.cookies['workforce_csrf']}
 
 
-def fixture_run(authenticated, output, with_policy=True):
+def fixture_run(authenticated, output, with_policy=True, web_grant=False):
     h = headers(authenticated)
     project = authenticated.post('/api/projects', json={'name': 'Tool project'},
                                  headers=h).json()
@@ -35,7 +36,8 @@ def fixture_run(authenticated, output, with_policy=True):
         headers=h).status_code == 201
     if with_policy:
         for action in ('project.memory.search', 'project.artifact.read',
-                       'project.artifact.write'):
+                       'project.artifact.write',
+                       *(['project.web.read'] if web_grant else [])):
             for agent_id in (None, agent['id']):
                 assert authenticated.post('/api/tool-policies', json={
                     'project_id': project['id'], 'agent_id': agent_id,
@@ -43,6 +45,13 @@ def fixture_run(authenticated, output, with_policy=True):
                     'effect': ('require_approval' if with_policy == 'approval' and
                                action == 'project.artifact.write' and agent_id is None
                                else 'allow')}, headers=h).status_code == 201
+    if web_grant:
+        response = authenticated.post('/api/read-destination-grants', json={
+            'project_id': project['id'], 'agent_id': agent['id'],
+            'host': 'example.test', 'enabled': True,
+            'expires_at': (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()},
+            headers=h)
+        assert response.status_code == 201, response.text
     response = authenticated.post(f"/api/tasks/{task['id']}/dispatch", json={
         'agent_id': agent['id'], 'root_cap': '1.0'}, headers=h)
     assert response.status_code == 202, response.text
@@ -138,3 +147,39 @@ def test_project_approval_ceiling_suspends_write(authenticated):
     assert row['status'] == 'awaiting_approval'
     with session_factory()() as db:
         assert db.scalar(select(ArtifactVersion.id)) is None
+
+
+def test_web_read_proposal_is_typed_scoped_and_never_executed(authenticated):
+    output = json.dumps({'version': 1, 'action': 'project.web.read',
+                         'arguments': {'project_id': 'PROJECT_ID',
+                                       'url': 'https://example.test/source',
+                                       'max_bytes': 1024, 'timeout_seconds': 2}})
+    project, _, execution_id = fixture_run(authenticated, output, web_grant=True)
+    row = authenticated.get('/api/tool-invocations',
+                            params={'project_id': project['id']}).json()[0]
+    assert row['execution_id'] == execution_id
+    assert row['resource'] == f"project:{project['id']}/web-origin:example.test"
+    assert row['policy_decision'] == 'require_approval'
+    assert row['status'] == 'proposed' and row['approval'] is None
+    with session_factory()() as db:
+        assert db.get(ToolInvocation, row['id']).status == 'proposed'
+    assert authenticated.post(f'/api/executions/{execution_id}/cancel',
+                              headers=headers(authenticated)).status_code == 200
+    assert authenticated.get('/api/tool-invocations',
+                             params={'project_id': project['id']}).json()[0]['status'] == 'invalidated'
+
+
+def test_web_read_proposal_without_exact_grant_stays_denied(authenticated):
+    output = json.dumps({'version': 1, 'action': 'project.web.read',
+                         'arguments': {'project_id': 'PROJECT_ID',
+                                       'url': 'https://example.test/source'}})
+    project, _, _ = fixture_run(authenticated, output, with_policy=False)
+    row = authenticated.get('/api/tool-invocations',
+                            params={'project_id': project['id']}).json()[0]
+    assert row['status'] == 'denied'
+    for url in ('https://user@example.test/source',
+                'http://example.test/source', 'https://example.test:0/source'):
+        with pytest.raises(ToolProposalError):
+            parse_tool_output(json.dumps({'version': 1,
+                'action': 'project.web.read', 'arguments': {
+                    'project_id': project['id'], 'url': url}}))

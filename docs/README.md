@@ -44,6 +44,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 36. [Pinned destination boundary](research/network-boundary-validation.md)
 37. [External read observations](research/read-observation-validation.md)
 38. [Persistent read destination grants](research/read-grant-validation.md)
+39. [Inert web-read proposals](research/read-proposal-validation.md)
 
 ## Architecture
 
@@ -67,4 +68,4 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 
 ## Current coding task
 
-Follow [progress.md](../progress.md) task by task. Phase 7.4a persisted exact destination grants; mediated web-read execution and the complete gateway gate remain before any product outbound read. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.
+Follow [progress.md](../progress.md) task by task. Phase 7.4b admits inert, typed web-read proposals; mediated execution and the complete gateway gate remain before any product outbound read. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.
