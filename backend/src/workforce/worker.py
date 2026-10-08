@@ -9,6 +9,7 @@ from .db import session_factory
 from .models import AgentConfigVersion, AuditEvent, BudgetAccount, BudgetReservation, Execution, ModelCall, Outbox, Task, now
 from .services import AccessDenied, authorize_agent_project, reserve_budget
 from .artifacts import apply_approved_artifacts, propose_fixture_artifact
+from .memory_runtime import record_memory_output
 from .cancellation import invalidate_cancelled_approvals, invalidate_cancelled_collaboration
 from .collaboration import record_candidate
 from . import providers
@@ -41,8 +42,8 @@ def generate_step(execution_id: str) -> dict:
         request = GenerationRequest(request_id=execution_id, model_id=config.model_id,
                                     messages=(TextMessage(role='system', trust_origin='human', text=config.instructions),
                                               TextMessage(role='user', trust_origin='human', text=task.title)),
-                                    max_output_tokens=(512 if (config.config or {}).get('output_contract') == 'collaboration.v1' else 128),
-                                    require_structured_output=(config.config or {}).get('output_contract') == 'collaboration.v1',
+                                    max_output_tokens=(512 if (config.config or {}).get('output_contract') in ('collaboration.v1', 'memory.v1') else 128),
+                                    require_structured_output=(config.config or {}).get('output_contract') in ('collaboration.v1', 'memory.v1'),
                                     deadline_at=datetime.now(timezone.utc) + timedelta(
                                         seconds=get_settings().model_call_timeout_seconds))
         connection = config.provider_connection
@@ -111,6 +112,8 @@ def complete_step(execution_id: str, result: dict) -> str:
                              usage=response.usage.model_dump(mode='json'), result=response.content))
         if (config.config or {}).get('output_contract') == 'collaboration.v1':
             record_candidate(db, execution, response.content)
+        elif (config.config or {}).get('output_contract') == 'memory.v1':
+            record_memory_output(db, execution, response.content)
         else:
             propose_fixture_artifact(db, execution, response.content)
         release_reservation(db, execution)
