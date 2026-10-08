@@ -25,6 +25,11 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 17. [Bounded delegation](research/delegation-validation.md)
 18. [Messages and cancellation](research/messages-cancellation-validation.md)
 19. [Runtime collaboration gate](research/runtime-collaboration-validation.md)
+20. [Scoped knowledge ledger](research/memory-ledger-validation.md)
+21. [Reviewed memory writes](research/reviewed-memory-validation.md)
+22. [Lexical memory retrieval](research/lexical-memory-validation.md)
+23. [Cited context](research/cited-context-validation.md)
+24. [Phase 4 artifact and memory gate](research/phase-4-gate.md)
 
 ## Architecture
 
@@ -48,4 +53,4 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 
 ## Current coding task
 
-Follow [progress.md](../progress.md) task by task. Phase 4 begins after the completed Phase 3 fixture gate. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.
+Follow [progress.md](../progress.md) task by task. Phase 5 governed tools begin after the completed Phase 4 fixture gate. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.

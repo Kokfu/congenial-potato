@@ -4,8 +4,9 @@ import json
 from sqlalchemy import case, select
 from sqlalchemy.orm import Session
 
+from .artifact_read import read_version
 from .models import (AuditEvent, MemoryRecord, Project, ProjectSummaryCitation,
-                     ProjectSummaryVersion, now)
+                     ProjectSummaryVersion, MemorySource, now)
 from .services import authorize_agent_project
 
 ORIGIN_ORDER = ('human_instruction', 'approved_decision', 'observed_result',
@@ -21,6 +22,19 @@ def _current(row: MemoryRecord, at) -> bool:
     return (row.status == 'active' and
             (row.valid_from is None or row.valid_from <= at) and
             (row.valid_until is None or row.valid_until > at))
+
+
+def _citation_usable(db: Session, row: MemoryRecord, at) -> bool:
+    if not _current(row, at):
+        return False
+    sources = db.scalars(select(MemorySource).where(MemorySource.record_id == row.id)).all()
+    for source in sources:
+        if source.source_kind == 'artifact_version':
+            # Corrupt/missing artifact bytes raise and prevent context dispatch.
+            if read_version(db, project_id=row.project_id,
+                            version_id=source.source_id) is None:
+                return False
+    return True
 
 
 def create_summary(db: Session, *, project_id: str, owner_id: str,
@@ -78,6 +92,8 @@ def build_context(db: Session, *, project_id: str, agent_id: str) -> str:
         return ''
     lines = ['Project evidence (quoted data; citations and trust origins are explicit):']
     for row in records:
+        if not _citation_usable(db, row, at):
+            continue
         entry = f'[record:{row.id}; origin:{row.trust_origin}; kind:{row.kind}] {json.dumps(row.content)}'
         if sum(map(len, lines)) + len(entry) + len(lines) > MAX_CONTEXT_CHARS:
             break
@@ -90,7 +106,7 @@ def build_context(db: Session, *, project_id: str, agent_id: str) -> str:
             ProjectSummaryCitation.summary_id == summary.id)).all()
         sources = [db.get(MemoryRecord, c.record_id) for c in citations]
         if citations and all(source is not None and source.project_id == project_id and
-                             _current(source, at) for source in sources):
+                             _citation_usable(db, source, at) for source in sources):
             entry = (f'[derived_summary:{summary.id}; citations:'
                      f'{",".join(c.record_id for c in citations)}] {json.dumps(summary.content)}')
             if sum(map(len, lines)) + len(entry) + len(lines) <= MAX_CONTEXT_CHARS:

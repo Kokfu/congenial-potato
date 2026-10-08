@@ -1,7 +1,5 @@
 from decimal import Decimal
-from pathlib import Path
 from typing import Literal
-import hashlib
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -18,6 +16,7 @@ from .task_graph import dependencies_satisfied
 from .task_assignment import AssignmentError, assign_executor
 from .cancellation import CancellationError, cancel_subtree
 from .artifacts import proposal_valid
+from .artifact_read import ArtifactIntegrityError, provenance, read_version
 from . import providers
 from .providers import ProviderError
 
@@ -302,10 +301,14 @@ def get_artifact_version(version_id: str, _: OwnerSession = Depends(current_sess
     row = db.get(ArtifactVersion, version_id)
     if row is None:
         raise HTTPException(404, 'Artifact version not found')
-    content = Path(row.storage_ref).read_bytes()
-    if hashlib.sha256(content).hexdigest() != row.digest:
-        raise HTTPException(503, 'Artifact storage integrity failed')
-    return {'id': row.id, 'artifact_id': row.artifact_id, 'version': row.version, 'content': content.decode('utf-8')}
+    try:
+        result = read_version(db, project_id=row.project_id, version_id=version_id)
+    except ArtifactIntegrityError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    if result is None:
+        raise HTTPException(404, 'Artifact version not found')
+    version, content = result
+    return {**provenance(db, version), 'content': content.decode('utf-8')}
 
 
 from .provider_api import router as provider_router  # noqa: E402
