@@ -16,7 +16,7 @@ from .tool_approval import create_tool_approval
 from .activity import record_activity
 from .network_policy import canonical_public_url
 from .local_read_experiment import ReadDenied
-from .read_grants import active_read_grant
+from .read_grants import active_read_grant_record
 
 
 class MemorySearchArgs(BaseModel):
@@ -152,8 +152,10 @@ def record_tool_output(db: Session, execution: Execution,
     if definition.action == 'project.web.read' and decision.effect != 'deny':
         try:
             host, _ = canonical_public_url(args['url'])
-            active_read_grant(db, project_id=task.project_id,
-                              agent_id=execution.agent_id, host=host)
+            grant = active_read_grant_record(db, project_id=task.project_id,
+                agent_id=execution.agent_id, host=host)
+            snapshot = {**snapshot, 'destination_grant': {
+                'id': grant.id, 'revision': grant.revision}}
         except ReadDenied:
             snapshot = {**snapshot, 'reason': 'destination_grant_unavailable'}
             decision = type(decision)('deny', snapshot)

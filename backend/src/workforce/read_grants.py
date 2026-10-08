@@ -73,8 +73,8 @@ def set_read_grant(db: Session, *, project_id: str, agent_id: str,
     return row
 
 
-def active_read_grant(db: Session, *, project_id: str, agent_id: str,
-                      host: str) -> PublicReadGrant:
+def active_read_grant_record(db: Session, *, project_id: str, agent_id: str,
+                             host: str) -> ReadDestinationGrant:
     host = canonical_public_host(host)
     try:
         authorize_agent_project(db, agent_id, project_id, 'project.execute')
@@ -83,11 +83,18 @@ def active_read_grant(db: Session, *, project_id: str, agent_id: str,
     row = db.scalar(select(ReadDestinationGrant).where(
         ReadDestinationGrant.project_id == project_id,
         ReadDestinationGrant.agent_id == agent_id,
-        ReadDestinationGrant.host == host))
+        ReadDestinationGrant.host == host).with_for_update())
     if row is None or not row.enabled or row.expires_at <= datetime.now(timezone.utc):
         raise ReadDenied('Destination grant unavailable')
+    return row
+
+
+def active_read_grant(db: Session, *, project_id: str, agent_id: str,
+                      host: str) -> PublicReadGrant:
+    row = active_read_grant_record(db, project_id=project_id,
+                                   agent_id=agent_id, host=host)
     return PublicReadGrant(project_id=project_id, agent_id=agent_id,
-                           host=host, expires_at=row.expires_at)
+                           host=row.host, expires_at=row.expires_at)
 
 
 @router.get('/api/read-destination-grants')

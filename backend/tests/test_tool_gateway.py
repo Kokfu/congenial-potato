@@ -10,6 +10,7 @@ from workforce.db import session_factory
 from workforce.models import ArtifactVersion, Execution, ToolInvocation
 from workforce.tool_gateway import ToolProposalError, parse_tool_output, record_tool_output
 from workforce.worker import dispatch_once
+from workforce.tool_effects import apply_admitted_tools
 
 
 def headers(client):
@@ -163,6 +164,17 @@ def test_web_read_proposal_is_typed_scoped_and_never_executed(authenticated):
     assert row['status'] == 'proposed' and row['approval'] is None
     with session_factory()() as db:
         assert db.get(ToolInvocation, row['id']).status == 'proposed'
+    staged = authenticated.post(
+        f"/api/tool-invocations/{row['id']}/stage-web-read-approval",
+        headers=headers(authenticated))
+    assert staged.status_code == 200, staged.text
+    assert staged.json()['target_version'] is not None
+    approved = authenticated.post(f"/api/tool-invocations/{row['id']}/decision",
+        json={'approved': True, 'payload_hash': staged.json()['payload_hash']},
+        headers=headers(authenticated))
+    assert approved.status_code == 200, approved.text
+    assert approved.json()['status'] == 'approved_staged'
+    assert apply_admitted_tools() == 0
     assert authenticated.post(f'/api/executions/{execution_id}/cancel',
                               headers=headers(authenticated)).status_code == 200
     assert authenticated.get('/api/tool-invocations',
@@ -183,3 +195,55 @@ def test_web_read_proposal_without_exact_grant_stays_denied(authenticated):
             parse_tool_output(json.dumps({'version': 1,
                 'action': 'project.web.read', 'arguments': {
                     'project_id': project['id'], 'url': url}}))
+
+
+def test_web_read_approval_rechecks_destination_revision(authenticated):
+    output = json.dumps({'version': 1, 'action': 'project.web.read',
+                         'arguments': {'project_id': 'PROJECT_ID',
+                                       'url': 'https://example.test/source'}})
+    project, _, execution_id = fixture_run(authenticated, output, web_grant=True)
+    row = authenticated.get('/api/tool-invocations',
+                            params={'project_id': project['id']}).json()[0]
+    with session_factory()() as db:
+        agent_id = db.get(Execution, execution_id).agent_id
+    changed = authenticated.post('/api/read-destination-grants', json={
+        'project_id': project['id'], 'agent_id': agent_id,
+        'host': 'example.test', 'enabled': False,
+        'expires_at': (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()},
+        headers=headers(authenticated))
+    assert changed.status_code == 201
+    rejected = authenticated.post(
+        f"/api/tool-invocations/{row['id']}/stage-web-read-approval",
+        headers=headers(authenticated))
+    assert rejected.status_code == 409
+    assert authenticated.get('/api/tool-invocations',
+        params={'project_id': project['id']}).json()[0]['status'] == 'invalidated'
+
+
+def test_staged_web_read_approval_invalidates_after_grant_change(authenticated):
+    output = json.dumps({'version': 1, 'action': 'project.web.read',
+                         'arguments': {'project_id': 'PROJECT_ID',
+                                       'url': 'https://example.test/source'}})
+    project, _, execution_id = fixture_run(authenticated, output, web_grant=True)
+    row = authenticated.get('/api/tool-invocations',
+                            params={'project_id': project['id']}).json()[0]
+    staged = authenticated.post(
+        f"/api/tool-invocations/{row['id']}/stage-web-read-approval",
+        headers=headers(authenticated))
+    assert staged.status_code == 200
+    with session_factory()() as db:
+        agent_id = db.get(Execution, execution_id).agent_id
+    assert authenticated.post('/api/read-destination-grants', json={
+        'project_id': project['id'], 'agent_id': agent_id,
+        'host': 'example.test', 'enabled': True,
+        'expires_at': (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()},
+        headers=headers(authenticated)).status_code == 201
+    invalid = authenticated.post(f"/api/tool-invocations/{row['id']}/decision",
+        json={'approved': True, 'payload_hash': staged.json()['payload_hash']},
+        headers=headers(authenticated))
+    assert invalid.status_code == 409
+    current = authenticated.get('/api/tool-invocations',
+                                params={'project_id': project['id']}).json()[0]
+    assert current['status'] == 'invalidated'
+    assert current['approval']['status'] == 'invalidated'
+    assert apply_admitted_tools() == 0
