@@ -1,6 +1,6 @@
 # MVP plan
 
-Status: architecture approved; Phase 0 and the foundation are complete. Phase 3 fixture work is in progress, while native activation remains gated.
+Status: architecture approved; Phase 0, the foundation and the Phase 3 fixture gate are complete. Phase 4 memory work is next, while native activation remains gated.
 
 ## Proof scenario
 

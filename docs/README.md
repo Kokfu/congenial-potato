@@ -20,6 +20,11 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 12. [Usage normalization and uncertain response cost](research/usage-normalization-validation.md)
 13. [Offline native SDK worker validation](research/offline-native-worker-validation.md)
 14. [Phase 3 task graph foundation](research/task-graph-validation.md)
+15. [Task acceptance and assignment](research/task-acceptance-validation.md)
+16. [Manager plan validation](research/manager-plan-validation.md)
+17. [Bounded delegation](research/delegation-validation.md)
+18. [Messages and cancellation](research/messages-cancellation-validation.md)
+19. [Runtime collaboration gate](research/runtime-collaboration-validation.md)
 
 ## Architecture
 
@@ -43,4 +48,4 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 
 ## Current coding task
 
-Follow [progress.md](../progress.md) task by task. Phase 3 uses fake providers while the Phase 2 live activation gate remains open. Keep paid calls and production credentials disabled during fixture validation.
+Follow [progress.md](../progress.md) task by task. Phase 4 begins after the completed Phase 3 fixture gate. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.

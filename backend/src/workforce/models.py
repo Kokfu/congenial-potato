@@ -134,6 +134,19 @@ class PlanProposal(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class CollaborationProposal(Base):
+    __tablename__ = 'collaboration_proposals'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    source_execution_id: Mapped[str] = mapped_column(ForeignKey('executions.id'), unique=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'))
+    kind: Mapped[str] = mapped_column(String(30))
+    payload: Mapped[dict] = mapped_column(JSON)
+    payload_hash: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(30), default='pending')
+    admitted_ref: Mapped[str | None] = mapped_column(String(36))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class TaskMessage(Base):
     __tablename__ = 'task_messages'
     __table_args__ = (UniqueConstraint('sender_execution_id', 'correlation_key',

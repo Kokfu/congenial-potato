@@ -176,6 +176,25 @@ class FakeAdapter:
         return 'fixture_ready'
 
 
+class CollaborationFixtureAdapter(FakeAdapter):
+    """Echo a synthetic JSON fixture through the provider response boundary."""
+
+    def generate(self, request: GenerationRequest) -> GenerationResponse:
+        self._validate(request)
+        prefix = 'FIXTURE_COLLAB_JSON:'
+        instruction = next((message.text for message in request.messages
+                            if message.role == 'system'), '')
+        if not instruction.startswith(prefix):
+            raise ProviderError(ProviderErrorKind.INVALID_REQUEST,
+                                'Fixture collaboration response is unavailable')
+        content = instruction[len(prefix):].strip()
+        return GenerationResponse(content=content, actual_model=request.model_id,
+                                  provider_request_id=f'fixture:{self.connection_id}:{request.request_id}',
+                                  finish_reason='stop',
+                                  usage=Usage(input_tokens=len(request.input_text) // 4 + 1,
+                                              output_tokens=len(content) // 4 + 1))
+
+
 class ProviderRegistry:
     def __init__(self, adapters: tuple[ProviderAdapter, ...]):
         self._adapters = {adapter.connection_id: adapter for adapter in adapters}
@@ -200,6 +219,8 @@ def fixture_registry() -> ProviderRegistry:
         FakeAdapter('fixture', (CatalogModel(model_id='fake-v1', capabilities=base),)),
         FakeAdapter('fixture-alpha', (CatalogModel(model_id='alpha-text-v1', capabilities=base),)),
         FakeAdapter('fixture-beta', (CatalogModel(model_id='beta-tools-v1', capabilities=advanced),)),
+        CollaborationFixtureAdapter('fixture-collaboration', (
+            CatalogModel(model_id='collaboration-v1', capabilities=advanced),)),
         FakeAdapter('fixture-timeout', (CatalogModel(model_id='timeout-v1', capabilities=base),),
                     failure_kind=ProviderErrorKind.TIMEOUT),
     ))
