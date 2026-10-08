@@ -329,3 +329,5 @@ from .memory_api import router as memory_router  # noqa: E402
 app.include_router(memory_router)
 from .tool_api import router as tool_router  # noqa: E402
 app.include_router(tool_router)
+from .tool_policy_api import router as tool_policy_router  # noqa: E402
+app.include_router(tool_policy_router)

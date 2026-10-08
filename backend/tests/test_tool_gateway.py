@@ -16,7 +16,7 @@ def headers(client):
             'X-CSRF-Token': client.cookies['workforce_csrf']}
 
 
-def fixture_run(authenticated, output):
+def fixture_run(authenticated, output, with_policy=True):
     h = headers(authenticated)
     project = authenticated.post('/api/projects', json={'name': 'Tool project'},
                                  headers=h).json()
@@ -33,6 +33,16 @@ def fixture_run(authenticated, output):
     assert authenticated.post(f"/api/agents/{agent['id']}/grants", json={
         'project_id': project['id'], 'action': 'project.execute', 'allowed': True},
         headers=h).status_code == 201
+    if with_policy:
+        for action in ('project.memory.search', 'project.artifact.read',
+                       'project.artifact.write'):
+            for agent_id in (None, agent['id']):
+                assert authenticated.post('/api/tool-policies', json={
+                    'project_id': project['id'], 'agent_id': agent_id,
+                    'action': action,
+                    'effect': ('require_approval' if with_policy == 'approval' and
+                               action == 'project.artifact.write' and agent_id is None
+                               else 'allow')}, headers=h).status_code == 201
     response = authenticated.post(f"/api/tasks/{task['id']}/dispatch", json={
         'agent_id': agent['id'], 'root_cap': '1.0'}, headers=h)
     assert response.status_code == 202, response.text
@@ -63,7 +73,8 @@ def test_worker_proposes_canonical_tool_without_effect(authenticated):
     row = rows[0]
     assert row['execution_id'] == execution_id
     assert row['resource'] == f"project:{project['id']}/artifact:{artifact_id}"
-    assert row['effect'] == 'write' and row['status'] == 'proposed'
+    assert row['effect'] == 'write' and row['status'] == 'admitted'
+    assert row['policy_decision'] == 'allow'
     assert len(row['schema_hash']) == len(row['argument_hash']) == 64
     with session_factory()() as db:
         assert db.scalar(select(ArtifactVersion.id)) is None
@@ -101,3 +112,28 @@ def test_duplicate_keys_and_wrong_version_rejected():
     ]:
         with pytest.raises(ToolProposalError):
             parse_tool_output(content)
+
+
+def test_valid_proposal_stays_denied_without_policy(authenticated):
+    output = json.dumps({'version': 1, 'action': 'project.memory.search',
+                         'arguments': {'project_id': 'PROJECT_ID', 'query': 'retention'}})
+    project, _, _ = fixture_run(authenticated, output, with_policy=False)
+    row = authenticated.get('/api/tool-invocations',
+                            params={'project_id': project['id']}).json()[0]
+    assert row['status'] == 'denied'
+    assert row['policy_decision'] == 'deny'
+
+
+def test_project_approval_ceiling_suspends_write(authenticated):
+    output = json.dumps({'version': 1, 'action': 'project.artifact.write',
+                         'arguments': {'project_id': 'PROJECT_ID',
+                                       'artifact_id': str(uuid4()),
+                                       'content': 'Approval fixture',
+                                       'expected_parent': None}})
+    project, _, _ = fixture_run(authenticated, output, with_policy='approval')
+    row = authenticated.get('/api/tool-invocations',
+                            params={'project_id': project['id']}).json()[0]
+    assert row['policy_decision'] == 'require_approval'
+    assert row['status'] == 'awaiting_approval'
+    with session_factory()() as db:
+        assert db.scalar(select(ArtifactVersion.id)) is None

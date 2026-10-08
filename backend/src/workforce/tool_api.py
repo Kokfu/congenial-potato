@@ -24,5 +24,6 @@ def list_tool_invocations(project_id: str,
              'action': row.action, 'definition_version': row.definition_version,
              'schema_hash': row.schema_hash, 'argument_hash': row.argument_hash,
              'arguments': row.arguments, 'resource': row.resource,
-             'effect': row.effect, 'status': row.status,
+             'effect': row.effect, 'policy_decision': row.policy_decision,
+             'policy_snapshot': row.policy_snapshot, 'status': row.status,
              'created_at': row.created_at} for row in rows]
