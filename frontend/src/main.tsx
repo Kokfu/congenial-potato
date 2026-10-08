@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { CollaborationReview } from "./CollaborationReview";
 import { ToolReview } from "./ToolReview";
+import { ActivityTimeline } from "./ActivityTimeline";
 import "./style.css";
 
 type Project = { id: string; name: string; objective: string };
@@ -17,13 +18,6 @@ type Agent = {
 type Catalog = { connection_id: string; models: { model_id: string }[] };
 type AgentConfig = { versions: { version: number; instructions: string }[] };
 type Task = { id: string; title: string; status: string };
-type Event = {
-  id: string;
-  action: string;
-  resource: string;
-  outcome: string;
-  created_at: string;
-};
 type Approval = {
   id: string;
   resource: string;
@@ -72,7 +66,6 @@ function App() {
     Record<string, { connection: string; model: string }>
   >({});
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [events, setEvents] = useState<Event[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [projectId, setProjectId] = useState("");
   const [projectName, setProjectName] = useState("");
@@ -82,17 +75,15 @@ function App() {
   const [message, setMessage] = useState("");
   const [ready, setReady] = useState("checking");
   async function refresh() {
-    const [p, a, e, r, c] = await Promise.all([
+    const [p, a, r, c] = await Promise.all([
       api<Project[]>("/api/projects"),
       api<Agent[]>("/api/agents"),
-      api<Event[]>("/api/activity"),
       api<Approval[]>("/api/approvals"),
       api<Catalog[]>("/api/provider-connections"),
     ]);
     setProjects(p);
     setAgents(a);
     setRunAgentId((id) => id || a[0]?.id || "");
-    setEvents(e);
     setApprovals(r);
     setCatalogs(c);
     setProjectId((id) => id || p[0]?.id || "");
@@ -564,20 +555,7 @@ function App() {
           />
         )}
         {tab === "Activity" && (
-          <section className="panel">
-            <h2>Recent activity</h2>
-            {events.map((a) => (
-              <div className="row" key={a.id}>
-                <div>
-                  <strong>{a.action}</strong>
-                  <small>
-                    {a.resource} · {new Date(a.created_at).toLocaleString()}
-                  </small>
-                </div>
-                <span className="badge">{a.outcome}</span>
-              </div>
-            ))}
-          </section>
+          <ActivityTimeline projectId={projectId} api={api} onError={setMessage} />
         )}
         {tab === "Settings" && (
           <section className="panel">
