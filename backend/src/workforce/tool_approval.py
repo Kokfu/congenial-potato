@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .artifact_read import ArtifactIntegrityError, read_version
-from .models import (Approval, ArtifactVersion, AuditEvent, Execution, Task,
+from .models import (Approval, ArtifactVersion, AuditEvent, BudgetAccount, Execution, Task,
                      ToolInvocation, now)
 from .tool_policy import evaluate_tool_policy
 from .activity import record_activity
@@ -23,6 +23,11 @@ def _digest(payload: dict) -> str:
 
 
 def _target_version(invocation: ToolInvocation) -> str | None:
+    if invocation.action == 'project.web.read':
+        grant = invocation.policy_snapshot.get('destination_grant', {})
+        if grant.get('id') and grant.get('revision'):
+            return f"{grant['id']}:{grant['revision']}"
+        return None
     if invocation.action == 'project.artifact.write':
         return invocation.arguments.get('expected_parent')
     if invocation.action == 'project.artifact.read':
@@ -66,6 +71,50 @@ def create_tool_approval(db: Session, invocation: ToolInvocation) -> Approval:
     return approval
 
 
+def stage_web_read_approval(db: Session, *, invocation_id: str,
+                            owner_id: str) -> tuple[ToolInvocation, Approval | None, str | None]:
+    """Require an exact approval while keeping outbound execution unavailable."""
+    hint = db.get(ToolInvocation, invocation_id)
+    if hint is None or hint.action != 'project.web.read':
+        raise ToolApprovalError('Web read proposal unavailable')
+    source = db.get(Execution, hint.execution_id)
+    if source is None:
+        raise ToolApprovalError('Execution unavailable')
+    db.execute(select(Execution).where(Execution.id == source.root_id)
+               .with_for_update()).scalar_one_or_none()
+    db.refresh(source)
+    invocation = db.execute(select(ToolInvocation).where(
+        ToolInvocation.id == invocation_id).with_for_update()
+        .execution_options(populate_existing=True)).scalar_one()
+    if invocation.status == 'awaiting_approval':
+        approval = db.scalar(select(Approval).where(
+            Approval.tool_invocation_id == invocation.id))
+        if approval is None or approval.status != 'pending':
+            raise ToolApprovalError('Approval unavailable')
+        return invocation, approval, None
+    if invocation.status != 'proposed':
+        raise ToolApprovalError('Web read proposal is no longer open')
+    reason = invocation_invalid_reason(db, invocation, source,
+                                       expected_policy='require_approval')
+    if reason is None and db.get(BudgetAccount, source.root_id) is None:
+        reason = 'root_budget_unavailable'
+    if reason is not None:
+        invocation.status = 'invalidated'
+        db.add(AuditEvent(actor=owner_id, action='tool.approval.stage',
+                          resource=invocation.id, outcome='invalidated',
+                          detail={'reason': reason}))
+        record_activity(db, project_id=invocation.project_id, actor=owner_id,
+                        action='tool.approval.stage', resource=invocation.id,
+                        outcome='invalidated')
+        return invocation, None, reason
+    invocation.status = 'awaiting_approval'
+    approval = create_tool_approval(db, invocation)
+    db.add(AuditEvent(actor=owner_id, action='tool.approval.stage',
+                      resource=invocation.id, outcome='pending',
+                      detail={'approval_id': approval.id}))
+    return invocation, approval, None
+
+
 def _precondition_current(db: Session, invocation: ToolInvocation) -> bool:
     if invocation.action == 'project.artifact.write':
         head = db.scalar(select(ArtifactVersion).where(
@@ -92,6 +141,7 @@ def review_tool(db: Session, *, invocation_id: str, expected_hash: str,
         raise ToolApprovalError('Execution unavailable')
     db.execute(select(Execution).where(Execution.id == source.root_id)
                .with_for_update()).scalar_one_or_none()
+    db.refresh(source)
     invocation = db.execute(select(ToolInvocation).where(ToolInvocation.id == invocation_id)
                             .with_for_update().execution_options(populate_existing=True)).scalar_one()
     approval = db.execute(select(Approval).where(Approval.tool_invocation_id == invocation.id)
@@ -100,7 +150,8 @@ def review_tool(db: Session, *, invocation_id: str, expected_hash: str,
         raise ToolApprovalError('Approval unavailable')
     if expected_hash != approval.payload_hash:
         raise ToolApprovalError('Approval hash mismatch')
-    if approval.status == 'approved' and invocation.status == 'admitted' and approved:
+    if (approval.status == 'approved' and invocation.status in
+            ('admitted', 'approved_staged') and approved):
         return invocation, approval, None
     if approval.status == 'rejected' and invocation.status == 'rejected' and not approved:
         return invocation, approval, None
@@ -128,7 +179,8 @@ def review_tool(db: Session, *, invocation_id: str, expected_hash: str,
         return invocation, approval, reason
     approval.status = 'approved'
     approval.decision_payload_hash = approval.payload_hash
-    invocation.status = 'admitted'
+    invocation.status = ('approved_staged' if invocation.action == 'project.web.read'
+                         else 'admitted')
     db.add(AuditEvent(actor=owner_id, action='tool.approval', resource=invocation.id,
                       outcome='approved', detail={'approval_id': approval.id,
                                                   'payload_hash': approval.payload_hash}))
@@ -174,7 +226,20 @@ def invocation_invalid_reason(db: Session, invocation: ToolInvocation,
                                     project_id=invocation.project_id,
                                     action=invocation.action,
                                     resource=invocation.resource)
-    if decision.effect != expected_policy or decision.snapshot != invocation.policy_snapshot:
+    snapshot = decision.snapshot
+    if invocation.action == 'project.web.read' and decision.effect != 'deny':
+        from .network_policy import canonical_public_url
+        from .local_read_experiment import ReadDenied
+        from .read_grants import active_read_grant_record
+        try:
+            host, _ = canonical_public_url(invocation.arguments['url'])
+            grant = active_read_grant_record(db, project_id=invocation.project_id,
+                agent_id=source.agent_id, host=host)
+        except ReadDenied:
+            return 'destination_grant_unavailable'
+        snapshot = {**snapshot, 'destination_grant': {
+            'id': grant.id, 'revision': grant.revision}}
+    if decision.effect != expected_policy or snapshot != invocation.policy_snapshot:
         return 'policy_changed'
     if not _precondition_current(db, invocation):
         return 'target_changed'

@@ -77,7 +77,8 @@ def cancel_subtree(db: Session, execution_id: str, actor: str) -> tuple[Executio
                           outcome='invalidated', detail={'reason': 'execution_cancelled'}))
     tools = db.scalars(select(ToolInvocation).where(
         ToolInvocation.execution_id.in_(descendants),
-        ToolInvocation.status.in_(['proposed', 'awaiting_approval', 'admitted']))
+        ToolInvocation.status.in_(['proposed', 'awaiting_approval', 'admitted',
+                                   'approved_staged']))
         .with_for_update()).all()
     for invocation in tools:
         invocation.status = 'invalidated'
