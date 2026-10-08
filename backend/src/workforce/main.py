@@ -19,6 +19,7 @@ from .artifacts import proposal_valid
 from .artifact_read import ArtifactIntegrityError, provenance, read_version
 from . import providers
 from .providers import ProviderError
+from .activity import record_activity
 
 app = FastAPI(title='Workforce control plane', docs_url=None, redoc_url=None)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=[urlparse(get_settings().allowed_origin).hostname])
@@ -102,6 +103,8 @@ def create_project(data: ProjectInput, session: OwnerSession = Depends(require_c
     db.add(row)
     db.flush()
     db.add(AuditEvent(actor=session.owner_id, action='project.create', resource=row.id, outcome='allowed'))
+    record_activity(db, project_id=row.id, actor=session.owner_id,
+                    action='project.create', resource=row.id, outcome='allowed')
     db.commit()
     return {'id': row.id, 'name': row.name, 'objective': row.objective,
             'plan_revision': row.plan_revision}
@@ -155,6 +158,8 @@ def create_task(data: TaskInput, session: OwnerSession = Depends(require_csrf), 
     db.add(row)
     db.flush()
     db.add(AuditEvent(actor=session.owner_id, action='task.create', resource=row.id, outcome='allowed'))
+    record_activity(db, project_id=data.project_id, actor=session.owner_id,
+                    action='task.create', resource=row.id, outcome='allowed')
     db.commit()
     return {'id': row.id, 'title': row.title, 'status': row.status}
 
@@ -223,6 +228,9 @@ def dispatch(task_id: str, data: DispatchInput, session: OwnerSession = Depends(
     db.add(BudgetAccount(root_id=execution.id, cap=data.root_cap, reserved=Decimal('0'), spent=Decimal('0')))
     db.add(Outbox(kind='execution.dispatch', idempotency_key=execution.workflow_id, payload={'execution_id': execution.id}))
     db.add(AuditEvent(actor=session.owner_id, action='execution.dispatch', resource=execution.id, outcome='allowed'))
+    record_activity(db, project_id=task.project_id, actor=session.owner_id,
+                    action='execution.dispatch', resource=execution.id,
+                    outcome='allowed')
     task.status = 'queued'
     task.revision += 1
     db.commit()
@@ -244,6 +252,9 @@ def cancel_execution(execution_id: str, session: OwnerSession = Depends(require_
         execution, changed = cancel_subtree(db, execution_id, session.owner_id)
     except CancellationError as exc:
         raise HTTPException(404, 'Execution not found') from exc
+    record_activity(db, project_id=db.get(Task, execution.task_id).project_id,
+                    actor=session.owner_id, action='execution.cancel',
+                    resource=execution.id, outcome='allowed')
     db.commit()
     return {'id': execution.id, 'status': execution.status,
             'cancelled': execution.cancelled, 'cancelled_count': changed}
@@ -283,6 +294,10 @@ def decide_approval(approval_id: str, data: ApprovalDecision, session: OwnerSess
         approval.decision_payload_hash = approval.payload_hash
     db.add(AuditEvent(actor=session.owner_id, action='artifact.approval', resource=approval.resource,
                       outcome=approval.status, detail={'payload_hash': approval.payload_hash}))
+    source = db.get(Execution, approval.execution_id)
+    record_activity(db, project_id=db.get(Task, source.task_id).project_id,
+                    actor=session.owner_id, action='artifact.approval',
+                    resource=approval.resource, outcome=approval.status)
     db.commit()
     return {'id': approval.id, 'status': approval.status}
 
@@ -335,3 +350,5 @@ from .tool_policy_api import router as tool_policy_router  # noqa: E402
 app.include_router(tool_policy_router)
 from .schedule_api import router as schedule_router  # noqa: E402
 app.include_router(schedule_router)
+from .activity import router as activity_router  # noqa: E402
+app.include_router(activity_router)

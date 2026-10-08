@@ -37,6 +37,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 29. [Phase 5 governed tool fixture gate](research/phase-5-gate.md)
 30. [Daily schedule contract](research/daily-schedule-contract.md)
 31. [Durable schedule dispatch](research/schedule-dispatch-validation.md)
+32. [Project activity and SSE](research/activity-sse-validation.md)
 
 ## Architecture
 
@@ -60,4 +61,4 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 
 ## Current coding task
 
-Follow [progress.md](../progress.md) task by task. Phase 6.2 added durable fixture schedule dispatch and restart reconciliation; activity SSE and shared daily budget work follow. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.
+Follow [progress.md](../progress.md) task by task. Phase 6.3 added project-scoped activity and SSE reconnects; shared daily budget work and the Phase 6 gate follow. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.

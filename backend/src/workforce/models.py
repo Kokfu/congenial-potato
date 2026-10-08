@@ -47,6 +47,19 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(160))
     objective: Mapped[str] = mapped_column(Text, default='')
     plan_revision: Mapped[int] = mapped_column(Integer, default=1)
+    activity_seq: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ProjectActivity(Base):
+    __tablename__ = 'project_activity'
+    __table_args__ = (CheckConstraint('sequence >= 1', name='ck_project_activity_sequence'),)
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'), primary_key=True)
+    sequence: Mapped[int] = mapped_column(Integer, primary_key=True)
+    actor: Mapped[str] = mapped_column(String(160))
+    action: Mapped[str] = mapped_column(String(120))
+    resource: Mapped[str] = mapped_column(String(240))
+    outcome: Mapped[str] = mapped_column(String(30))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 

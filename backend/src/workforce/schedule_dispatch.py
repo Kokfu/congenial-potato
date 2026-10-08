@@ -11,6 +11,7 @@ from .models import (AgentConfigVersion, AuditEvent, BudgetAccount, Execution,
 from .schedules import latest_due
 from .services import AccessDenied, authorize_agent_project
 from .task_assignment import AssignmentError, assign_executor
+from .activity import record_activity
 
 
 def _admit(db: Session, schedule: Schedule, instant: datetime) -> bool:
@@ -85,6 +86,9 @@ def _admit(db: Session, schedule: Schedule, instant: datetime) -> bool:
                       effect_key=f'schedule:{due.key}',
                       detail={'schedule_id': schedule.id, 'reason': reason,
                               'execution_id': occurrence.execution_id}))
+    record_activity(db, project_id=schedule.project_id, actor='scheduler',
+                    action='schedule.occurrence', resource=occurrence.id,
+                    outcome=occurrence.status)
     return reason is None
 
 

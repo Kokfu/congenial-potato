@@ -19,6 +19,7 @@ from . import providers
 from .providers import GenerationRequest, GenerationResponse, ProviderError, TextMessage
 from .governed_call import governed_generate, price_for
 from .schedule_dispatch import schedule_due_once
+from .activity import record_activity
 
 RESERVATION = Decimal('0.010000')
 SCHEDULE_TICK = 'workforce-daily-tick-v1'
@@ -92,6 +93,9 @@ def fail_model_step(execution_id: str, error_kind: str, provider_error: str | No
         db.add(AuditEvent(actor=execution.agent_id, action='model.generate', resource=execution.id,
                           outcome=error_kind, detail={'provider_error': provider_error} if provider_error else {},
                           effect_key=f'model-error:{execution_id}'))
+        record_activity(db, project_id=task.project_id, actor=execution.agent_id,
+                        action='model.generate', resource=execution.id,
+                        outcome=error_kind)
         db.commit()
         return execution.status
 
@@ -137,6 +141,9 @@ def complete_step(execution_id: str, result: dict) -> str:
         execution.status = 'succeeded'
         if db.scalar(select(AuditEvent.id).where(AuditEvent.effect_key == f'fixture:{execution_id}')) is None:
             db.add(AuditEvent(actor=execution.agent_id, action='fixture.complete', resource=task.id, outcome='allowed', effect_key=f'fixture:{execution_id}'))
+            record_activity(db, project_id=task.project_id,
+                            actor=execution.agent_id, action='fixture.complete',
+                            resource=task.id, outcome='allowed')
         db.commit()
         return 'succeeded'
 
