@@ -68,6 +68,28 @@ class ProjectActivity(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class ExternalReadObservation(Base):
+    __tablename__ = 'external_read_observations'
+    __table_args__ = (
+        CheckConstraint("trust_origin = 'external_claim'", name='ck_external_read_trust'),
+        CheckConstraint('size BETWEEN 0 AND 65536', name='ck_external_read_size'),
+        Index('ix_external_read_project_time', 'project_id', 'retrieved_at'),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'))
+    agent_id: Mapped[str] = mapped_column(ForeignKey('agents.id'))
+    invocation_key: Mapped[str] = mapped_column(String(160), unique=True)
+    source_url: Mapped[str] = mapped_column(String(2048))
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    media_type: Mapped[str] = mapped_column(String(100))
+    size: Mapped[int] = mapped_column(Integer)
+    digest: Mapped[str] = mapped_column(String(64))
+    content: Mapped[str] = mapped_column(Text)
+    payload_hash: Mapped[str] = mapped_column(String(64))
+    trust_origin: Mapped[str] = mapped_column(String(30), default='external_claim')
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class Agent(Base):
     __tablename__ = 'agents'
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)

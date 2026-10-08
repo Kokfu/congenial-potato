@@ -353,3 +353,5 @@ from .schedule_api import router as schedule_router  # noqa: E402
 app.include_router(schedule_router)
 from .activity import router as activity_router  # noqa: E402
 app.include_router(activity_router)
+from .read_observations import router as read_observations_router  # noqa: E402
+app.include_router(read_observations_router)

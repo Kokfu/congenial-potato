@@ -42,6 +42,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 34. [Phase 6 fixture gate](research/phase-6-gate.md)
 35. [Local external-read contract](research/local-read-contract-validation.md)
 36. [Pinned destination boundary](research/network-boundary-validation.md)
+37. [External read observations](research/read-observation-validation.md)
 
 ## Architecture
 
@@ -65,4 +66,4 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 
 ## Current coding task
 
-Follow [progress.md](../progress.md) task by task. Phase 7.2 validated an isolated pinned destination boundary; untrusted content and the complete gateway gate follow before any product outbound read. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.
+Follow [progress.md](../progress.md) task by task. Phase 7.3 persisted scoped external claims; the complete gateway gate remains before any product outbound read. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.
