@@ -280,6 +280,27 @@ class MemoryConflict(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class ProjectSummaryVersion(Base):
+    __tablename__ = 'project_summary_versions'
+    __table_args__ = (UniqueConstraint('project_id', 'version', name='uq_project_summary_version'),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'))
+    version: Mapped[int] = mapped_column(Integer)
+    parent_id: Mapped[str | None] = mapped_column(ForeignKey('project_summary_versions.id'))
+    content: Mapped[str] = mapped_column(Text)
+    digest: Mapped[str] = mapped_column(String(64))
+    author_id: Mapped[str] = mapped_column(ForeignKey('owners.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ProjectSummaryCitation(Base):
+    __tablename__ = 'project_summary_citations'
+    __table_args__ = (UniqueConstraint('summary_id', 'record_id', name='uq_project_summary_citation'),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    summary_id: Mapped[str] = mapped_column(ForeignKey('project_summary_versions.id'))
+    record_id: Mapped[str] = mapped_column(ForeignKey('memory_records.id'))
+
+
 
 
 class BudgetAccount(Base):

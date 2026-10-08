@@ -10,6 +10,7 @@ from .models import AgentConfigVersion, AuditEvent, BudgetAccount, BudgetReserva
 from .services import AccessDenied, authorize_agent_project, reserve_budget
 from .artifacts import apply_approved_artifacts, propose_fixture_artifact
 from .memory_runtime import record_memory_output
+from .memory_context import build_context
 from .cancellation import invalidate_cancelled_approvals, invalidate_cancelled_collaboration
 from .collaboration import record_candidate
 from . import providers
@@ -39,9 +40,13 @@ def generate_step(execution_id: str) -> dict:
             authorize_agent_project(db, execution.agent_id, task.project_id, 'project.execute')
         except AccessDenied:
             return {'error': 'policy_denied', 'retryable': False}
+        context = build_context(db, project_id=task.project_id, agent_id=execution.agent_id)
+        messages = [TextMessage(role='system', trust_origin='human', text=config.instructions),
+                    TextMessage(role='user', trust_origin='human', text=task.title)]
+        if context:
+            messages.append(TextMessage(role='user', trust_origin='external', text=context))
         request = GenerationRequest(request_id=execution_id, model_id=config.model_id,
-                                    messages=(TextMessage(role='system', trust_origin='human', text=config.instructions),
-                                              TextMessage(role='user', trust_origin='human', text=task.title)),
+                                    messages=tuple(messages),
                                     max_output_tokens=(512 if (config.config or {}).get('output_contract') in ('collaboration.v1', 'memory.v1') else 128),
                                     require_structured_output=(config.config or {}).get('output_contract') in ('collaboration.v1', 'memory.v1'),
                                     deadline_at=datetime.now(timezone.utc) + timedelta(
