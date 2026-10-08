@@ -32,6 +32,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 24. [Phase 4 artifact and memory gate](research/phase-4-gate.md)
 25. [Typed tool gateway](research/tool-gateway-validation.md)
 26. [Tool resource policy](research/tool-policy-validation.md)
+27. [Durable tool approval](research/tool-approval-validation.md)
 
 ## Architecture
 

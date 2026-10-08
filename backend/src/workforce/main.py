@@ -251,7 +251,9 @@ def cancel_execution(execution_id: str, session: OwnerSession = Depends(require_
 
 @app.get('/api/approvals')
 def list_approvals(_: OwnerSession = Depends(current_session), db: Session = Depends(db_session)):
-    rows = db.scalars(select(Approval).where(Approval.status == 'pending').order_by(Approval.expires_at).limit(100)).all()
+    rows = db.scalars(select(Approval).where(
+        Approval.status == 'pending', Approval.tool_invocation_id.is_(None))
+        .order_by(Approval.expires_at).limit(100)).all()
     return [{'id': row.id, 'execution_id': row.execution_id, 'resource': row.resource, 'status': row.status,
              'expires_at': row.expires_at, 'payload_hash': row.payload_hash, 'content': row.payload.get('content')}
             for row in rows]
@@ -265,7 +267,7 @@ class ApprovalDecision(BaseModel):
 @app.post('/api/approvals/{approval_id}/decision')
 def decide_approval(approval_id: str, data: ApprovalDecision, session: OwnerSession = Depends(require_csrf), db: Session = Depends(db_session)):
     approval = db.execute(select(Approval).where(Approval.id == approval_id).with_for_update()).scalar_one_or_none()
-    if approval is None:
+    if approval is None or approval.tool_invocation_id is not None:
         raise HTTPException(404, 'Approval not found')
     if approval.status != 'pending':
         raise HTTPException(409, 'Approval already decided')

@@ -203,6 +203,7 @@ class Approval(Base):
     __tablename__ = 'approvals'
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     execution_id: Mapped[str] = mapped_column(ForeignKey('executions.id'))
+    tool_invocation_id: Mapped[str | None] = mapped_column(ForeignKey('tool_invocations.id'), unique=True)
     invocation_key: Mapped[str] = mapped_column(String(160), unique=True)
     payload_hash: Mapped[str] = mapped_column(String(64))
     decision_payload_hash: Mapped[str | None] = mapped_column(String(64))

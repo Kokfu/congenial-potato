@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from .models import AuditEvent, Execution, Task, ToolInvocation
 from .services import AccessDenied, authorize_agent_project
 from .tool_policy import evaluate_tool_policy
+from .tool_approval import create_tool_approval
 
 
 class MemorySearchArgs(BaseModel):
@@ -133,6 +134,8 @@ def record_tool_output(db: Session, execution: Execution,
                          policy_snapshot=decision.snapshot, status=status)
     db.add(row)
     db.flush()
+    if row.status == 'awaiting_approval':
+        create_tool_approval(db, row)
     db.add(AuditEvent(actor=execution.agent_id, action='tool.propose',
                       resource=row.id, outcome=status,
                       detail={'action': row.action, 'resource': resource,
