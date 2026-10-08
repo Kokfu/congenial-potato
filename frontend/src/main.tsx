@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { CollaborationReview } from "./CollaborationReview";
+import { ToolReview } from "./ToolReview";
 import "./style.css";
 
 type Project = { id: string; name: string; objective: string };
@@ -509,6 +510,7 @@ function App() {
           </section>
         )}
         {tab === "Approvals" && (
+          <>
           <section className="panel">
             <h2>Pending approvals</h2>
             <p className="muted">
@@ -550,6 +552,8 @@ function App() {
               ))
             )}
           </section>
+          <ToolReview projectId={projectId} api={api} onError={setMessage} />
+          </>
         )}
         {tab === "Collaboration" && (
           <CollaborationReview

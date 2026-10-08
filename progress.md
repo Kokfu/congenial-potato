@@ -33,7 +33,7 @@ Updated: 2026-10-08. This is the execution ledger for the approved AI workforce 
 - [ ] Phase 2: stable/versioned agent identities, two provider adapters, capability discovery, limits and fake-provider contract tests before opt-in capped live tests. Offline boundary validated; live activation remains open.
 - [x] Phase 3 fixture gate: validated plans, tasks, messages and bounded Manager/direct delegation with cycle, duplicate and cancellation tests. Agent-generated proposals pass through owner review and deterministic admission. Native activation remains separately gated.
 - [x] Phase 4 fixture gate: project-scoped facts, reviewed decisions, cited summaries, lexical retrieval and immutable artifact provenance checks. Evidence: `docs/research/phase-4-gate.md`.
-- [ ] Phase 5: governed tool gateway, default-deny policy and exact-effect durable approval, including mutation/replay/restart tests.
+- [x] Phase 5 fixture gate: governed tool gateway, default-deny policy and exact-effect durable approval, including mutation/replay/restart tests. Evidence: `docs/research/phase-5-gate.md`.
 - [ ] Phase 6: daily schedule, SSE timeline and shared daily budget, including missed-run and reconnect tests.
 - [ ] Phase 7: first bounded external read with SSRF and prompt-injection boundary tests.
 - [ ] Phase 8: isolated execution and external writes with idempotency and reconciliation.
@@ -104,7 +104,15 @@ Updated: 2026-10-08. This is the execution ledger for the approved AI workforce 
 - [x] **5.2 Policy and resource authority.** Enforce default deny, project and agent ceilings, and explicit-deny precedence for each canonical tool resource at proposal admission. Reuse the evaluator at approval and effect execution in tasks 5.3–5.4. Keep MCP as transport only. Evidence: `docs/research/tool-policy-validation.md`.
 - [x] **5.3 Exact-effect durable approval.** Bind approval to canonical arguments, schema, target precondition and expiry. Restart around approval and invalidate on change, revocation or cancellation. Evidence: `docs/research/tool-approval-validation.md`.
 - [x] **5.4 Idempotent synthetic effects.** Persist invocations and use an isolated fake effect ledger to verify replay, duplicate dispatch, unknown outcomes and reconciliation without external writes. Evidence: `docs/research/tool-effect-validation.md`.
-- [ ] **5.5 Phase 5 gate.** Verify complete mediation across allowed fixture paths, concurrent budgets, audit provenance and API/worker restart. Build, run and smoke Compose before closing the fixture gate.
+- [x] **5.5 Phase 5 fixture gate.** Require approval for every synthetic artifact write, verify concurrent duplicate effect handling and provenance, and expose exact tool review to the owner. Build, run and smoke Compose. Fixture mediation is verified; unrestricted runtime, shell and network mediation remain future gates. Evidence: `docs/research/phase-5-gate.md`.
+
+## Phase 6 tasks
+
+- [ ] **6.1 Daily schedule contract and persistence.** Define owner-managed UTC schedules with bounded missed occurrences, overlap policy, idempotent occurrence keys and project/agent authorization. Migrate persistent schedule records; use a deterministic fake clock for cases around restart.
+- [ ] **6.2 Durable schedule dispatch.** Enqueue one logical execution per occurrence outside the HTTP request. Recheck policy, cancellation and shared budget before dispatch. Test restart before and after a due occurrence, missed-run bounds and duplicate/overlapping workers.
+- [ ] **6.3 Activity timeline and SSE.** Expose project-scoped, ordered persisted activity with reconnect cursor, heartbeat and no metadata leakage. Keep REST commands; test disconnect/reconnect and browser-close independence.
+- [ ] **6.4 Shared daily budget integration.** Verify scheduled and manually delegated work share the same root and UTC daily holds, with concurrency, unknown charges and rollover checks. Keep live providers disabled.
+- [ ] **6.5 Phase 6 gate.** Run migration, backend, browser and local Compose restart checks. Record observed misfire/reconnect behavior and limitations before closing the fixture gate.
 
 ## Working rules and evidence
 

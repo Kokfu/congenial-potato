@@ -37,6 +37,14 @@ def test_project_ceiling_agent_grant_and_explicit_deny():
                         action=action, resource_id=None,
                         effect='allow', owner_id=owner_id)
         assert decide().effect == 'allow'
+        write = 'project.artifact.write'
+        for policy_agent in (None, agent.id):
+            set_tool_policy(db, project_id=project.id, agent_id=policy_agent,
+                            action=write, resource_id=None,
+                            effect='allow', owner_id=owner_id)
+        assert evaluate_tool_policy(db, agent_id=agent.id, project_id=project.id,
+                                    action=write, resource=canonical_policy_resource(
+                                        write, project.id, version_id)).effect == 'require_approval'
         exact = set_tool_policy(db, project_id=project.id, agent_id=agent.id,
                                 action=action, resource_id=version_id,
                                 effect='deny', owner_id=owner_id)

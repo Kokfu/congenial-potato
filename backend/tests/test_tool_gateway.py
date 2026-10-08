@@ -73,8 +73,9 @@ def test_worker_proposes_canonical_tool_without_effect(authenticated):
     row = rows[0]
     assert row['execution_id'] == execution_id
     assert row['resource'] == f"project:{project['id']}/artifact:{artifact_id}"
-    assert row['effect'] == 'write' and row['status'] == 'admitted'
-    assert row['policy_decision'] == 'allow'
+    assert row['effect'] == 'write' and row['status'] == 'awaiting_approval'
+    assert row['policy_decision'] == 'require_approval'
+    assert row['approval']['status'] == 'pending'
     assert len(row['schema_hash']) == len(row['argument_hash']) == 64
     with session_factory()() as db:
         assert db.scalar(select(ArtifactVersion.id)) is None
