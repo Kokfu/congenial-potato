@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .models import MemoryRecord, now
+from .memory_context import _citation_usable
 from .services import authorize_agent_project
 
 
@@ -56,4 +57,4 @@ def search_project_records(db: Session, *, project_id: str,
     return [SearchHit(record_id=row.id, project_id=row.project_id,
                       subject_key=row.subject_key, kind=row.kind,
                       trust_origin=row.trust_origin, snippet=_snippet(row.content, query),
-                      rank=float(score)) for row, score in rows]
+                      rank=float(score)) for row, score in rows if _citation_usable(db, row, current)]

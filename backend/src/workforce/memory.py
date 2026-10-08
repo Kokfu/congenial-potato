@@ -37,6 +37,43 @@ def candidate_hash(project_id: str, agent_id: str, source_execution_id: str | No
                                      separators=(',', ':')).encode()).hexdigest()
 
 
+def record_state_hash(db: Session, row: MemoryRecord) -> str:
+    sources = db.scalars(select(MemorySource).where(MemorySource.record_id == row.id)).all()
+    payload = {'id': row.id, 'project_id': row.project_id, 'subject_key': row.subject_key,
+               'content': row.content, 'trust_origin': row.trust_origin,
+               'status': row.status, 'superseded_by_id': row.superseded_by_id,
+               'sources': sorted([source.source_kind, source.source_id] for source in sources)}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True,
+                                     separators=(',', ':')).encode()).hexdigest()
+
+
+def supersede_record(db: Session, *, old_id: str, replacement_id: str,
+                     expected_state_hash: str, owner_id: str) -> MemoryRecord:
+    hint = db.get(MemoryRecord, old_id)
+    if hint is None:
+        raise MemoryReviewError('Record unavailable')
+    db.execute(select(Project).where(Project.id == hint.project_id).with_for_update()).scalar_one()
+    rows = db.scalars(select(MemoryRecord).where(
+        MemoryRecord.id.in_([old_id, replacement_id])).order_by(MemoryRecord.id)
+        .with_for_update().execution_options(populate_existing=True)).all()
+    indexed = {row.id: row for row in rows}
+    old, replacement = indexed.get(old_id), indexed.get(replacement_id)
+    if old is None or replacement is None or old.id == replacement.id:
+        raise MemoryReviewError('Replacement unavailable')
+    if old.status != 'active' or replacement.status != 'active':
+        raise MemoryReviewError('Both records must be active')
+    if old.project_id != replacement.project_id or old.subject_key != replacement.subject_key:
+        raise MemoryReviewError('Replacement scope or subject changed')
+    if record_state_hash(db, old) != expected_state_hash:
+        raise MemoryReviewError('Record changed')
+    old.status = 'superseded'
+    old.superseded_by_id = replacement.id
+    db.add(AuditEvent(actor=owner_id, action='memory.supersede', resource=old.id,
+                      outcome='allowed', detail={'replacement_id': replacement.id,
+                                                 'old_state_hash': expected_state_hash}))
+    return old
+
+
 def _source_project(db: Session, kind: str, source_id: str) -> str | None:
     model = SOURCE_MODELS.get(kind)
     if model is None:

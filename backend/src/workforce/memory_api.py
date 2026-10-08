@@ -5,8 +5,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .db import db_session
-from .memory import MemoryReviewError, review_candidate
+from .memory import (MemoryReviewError, record_state_hash, review_candidate,
+                     supersede_record)
 from .memory_search import search_project_records
+from .artifact_read import ArtifactIntegrityError
 from .memory_context import SummaryError, create_summary
 from .models import (MemoryRecord, MemorySource, OwnerSession, Project,
                      ProjectSummaryCitation, ProjectSummaryVersion)
@@ -63,6 +65,8 @@ def search_memory(project_id: str, query: str, limit: int = 20,
         hits = search_project_records(db, project_id=project_id, query=query, limit=limit)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+    except ArtifactIntegrityError as exc:
+        raise HTTPException(503, str(exc)) from exc
     return [hit.__dict__ for hit in hits]
 
 
@@ -71,6 +75,43 @@ class ReviewInput(BaseModel):
     approved: bool
     payload_hash: str = Field(pattern=r'^[0-9a-f]{64}$')
     acknowledged_conflict_ids: list[str] = Field(default_factory=list, max_length=100)
+
+
+class SupersedeInput(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    replacement_id: str
+    expected_state_hash: str = Field(pattern=r'^[0-9a-f]{64}$')
+
+
+@router.get('/api/memory/records')
+def list_memory_records(project_id: str, _: OwnerSession = Depends(current_session),
+                        db: Session = Depends(db_session)):
+    if db.get(Project, project_id) is None:
+        raise HTTPException(404, 'Project not found')
+    rows = db.scalars(select(MemoryRecord).where(
+        MemoryRecord.project_id == project_id,
+        MemoryRecord.status.in_(['active', 'superseded']))
+        .order_by(MemoryRecord.created_at.desc(), MemoryRecord.id).limit(100)).all()
+    return [{'id': row.id, 'kind': row.kind, 'subject_key': row.subject_key,
+             'content': row.content, 'trust_origin': row.trust_origin,
+             'status': row.status, 'superseded_by_id': row.superseded_by_id,
+             'state_hash': record_state_hash(db, row)} for row in rows]
+
+
+@router.post('/api/memory/records/{record_id}/supersede')
+def supersede_memory_record(record_id: str, data: SupersedeInput,
+                            session: OwnerSession = Depends(require_csrf),
+                            db: Session = Depends(db_session)):
+    try:
+        row = supersede_record(db, old_id=record_id,
+                               replacement_id=data.replacement_id,
+                               expected_state_hash=data.expected_state_hash,
+                               owner_id=session.owner_id)
+    except MemoryReviewError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    db.commit()
+    return {'id': row.id, 'status': row.status,
+            'superseded_by_id': row.superseded_by_id}
 
 
 @router.get('/api/memory-candidates')
