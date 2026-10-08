@@ -1,6 +1,6 @@
 # MVP plan
 
-Status: architecture approved; Phase 0, the foundation, Phase 3 and Phase 4 fixture gates are complete. Phase 5 governed tools are next, while native activation remains gated.
+Status: architecture approved; Phase 0, the foundation, and Phase 3–5 fixture gates are complete. Phase 6 scheduling and activity are next; native activation remains gated.
 
 ## Proof scenario
 
@@ -70,7 +70,7 @@ Current docs include research, ten architecture files, this plan and five ADRs. 
 
 ## Open questions
 
-Paperclip fit after tests; first real daily workflow; accounts/caps; host architecture; data destinations/retention; first integration; later write approval strictness; licensing for distribution.
+First real daily workflow; accounts/caps; host architecture; data destinations/retention; first integration; licensing for distribution. The Phase 0 Paperclip assessment and Phase 5 synthetic write approval gate are recorded in the research evidence.
 
 Repository destination is now Kokfu/congenial-potato.
 

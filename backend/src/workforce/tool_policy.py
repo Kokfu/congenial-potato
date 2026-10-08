@@ -107,6 +107,8 @@ def evaluate_tool_policy(db: Session, *, agent_id: str, project_id: str,
         return PolicyDecision('deny', {**snapshot, 'reason': 'missing_ceiling_or_grant'})
     if any(row.effect not in ('allow', 'require_approval') for row in rows):
         return PolicyDecision('deny', {**snapshot, 'reason': 'unknown_policy_effect'})
-    if any(row.effect == 'require_approval' for row in rows):
+    from .tool_gateway import DEFINITIONS
+    if DEFINITIONS[action].approval_required or any(
+            row.effect == 'require_approval' for row in rows):
         return PolicyDecision('require_approval', snapshot)
     return PolicyDecision('allow', snapshot)

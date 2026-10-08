@@ -48,10 +48,12 @@ class ToolDefinition:
     version: int
     input_model: type[BaseModel]
     effect: Literal['read', 'write']
+    approval_required: bool = False
 
     @property
     def schema_hash(self) -> str:
         value = {'action': self.action, 'version': self.version,
+                 'effect': self.effect, 'approval_required': self.approval_required,
                  'schema': self.input_model.model_json_schema()}
         return hashlib.sha256(json.dumps(value, sort_keys=True,
                                          separators=(',', ':')).encode()).hexdigest()
@@ -60,7 +62,7 @@ class ToolDefinition:
 DEFINITIONS = {definition.action: definition for definition in (
     ToolDefinition('project.memory.search', 1, MemorySearchArgs, 'read'),
     ToolDefinition('project.artifact.read', 1, ArtifactReadArgs, 'read'),
-    ToolDefinition('project.artifact.write', 1, ArtifactWriteArgs, 'write'),
+    ToolDefinition('project.artifact.write', 1, ArtifactWriteArgs, 'write', True),
 )}
 
 
