@@ -56,6 +56,37 @@ def _public_addresses(host: str, port: int, resolver: Resolver) -> tuple[str, ..
     return tuple(sorted(addresses))
 
 
+def canonical_public_host(host: str) -> str:
+    """Validate a stored exact destination without doing DNS or making a request."""
+    if not isinstance(host, str) or host != host.lower() or len(host) > 253:
+        raise ReadDenied('Destination hostname is not canonical ASCII')
+    labels = host.split('.')
+    if (len(labels) < 2 or not re.fullmatch(r'[a-z0-9.-]+', host) or
+            any(not label or len(label) > 63 or label[0] == '-' or
+                label[-1] == '-' for label in labels) or
+            all(label.isdigit() for label in labels)):
+        raise ReadDenied('Destination hostname is not canonical ASCII')
+    return host
+
+
+def canonical_public_url(value: str) -> tuple[str, int]:
+    if (len(value) > 2048 or value != value.strip() or
+            any(ord(char) < 32 or ord(char) == 127 for char in value)
+            or '\\' in value):
+        raise ReadDenied('Invalid destination URL')
+    try:
+        url = urlsplit(value)
+        port = 443 if url.port is None else url.port
+        host = canonical_public_host(url.hostname)
+    except (ValueError, TypeError) as exc:
+        raise ReadDenied('Invalid destination URL') from exc
+    if (url.scheme != 'https' or port != 443 or url.username is not None or
+            url.password is not None or url.fragment or not url.path.startswith('/') or
+            not url.netloc or '@' in url.netloc):
+        raise ReadDenied('Destination outside exact HTTPS grant')
+    return host, port
+
+
 def prepare_public_destination(request: ReadRequest, grant: PublicReadGrant,
                                *, resolver: Resolver = socket.getaddrinfo) -> PinnedDestination:
     """Require an exact HTTPS grant and reject mixed public/private DNS answers."""
@@ -63,24 +94,9 @@ def prepare_public_destination(request: ReadRequest, grant: PublicReadGrant,
             grant.expires_at.tzinfo is None or
             grant.expires_at <= datetime.now(timezone.utc)):
         raise ReadDenied('Destination grant unavailable')
-    if any(ord(char) < 32 or ord(char) == 127 for char in request.url) or '\\' in request.url:
-        raise ReadDenied('Invalid destination URL')
-    try:
-        url = urlsplit(request.url)
-        port = 443 if url.port is None else url.port
-        host = url.hostname
-    except ValueError as exc:
-        raise ReadDenied('Invalid destination URL') from exc
-    if (url.scheme != 'https' or host is None or host.endswith('.') or
-            host != grant.host.lower() or port != grant.port or
-            url.username is not None or url.password is not None or url.fragment or
-            not url.path.startswith('/')):
+    host, port = canonical_public_url(request.url)
+    if host != grant.host or port != grant.port:
         raise ReadDenied('Destination outside exact HTTPS grant')
-    labels = host.split('.')
-    if (not re.fullmatch(r'[a-z0-9.-]+', host) or
-            any(not label or len(label) > 63 or label[0] == '-' or
-                label[-1] == '-' for label in labels)):
-        raise ReadDenied('Destination hostname is not canonical ASCII')
     return PinnedDestination(host=host, port=port,
                              addresses=_public_addresses(host, port, resolver))
 

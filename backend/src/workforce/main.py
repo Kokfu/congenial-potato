@@ -355,3 +355,5 @@ from .activity import router as activity_router  # noqa: E402
 app.include_router(activity_router)
 from .read_observations import router as read_observations_router  # noqa: E402
 app.include_router(read_observations_router)
+from .read_grants import router as read_grants_router  # noqa: E402
+app.include_router(read_grants_router)

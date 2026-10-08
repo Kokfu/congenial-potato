@@ -90,6 +90,22 @@ class ExternalReadObservation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class ReadDestinationGrant(Base):
+    __tablename__ = 'read_destination_grants'
+    __table_args__ = (
+        UniqueConstraint('project_id', 'agent_id', 'host', name='uq_read_destination_scope'),
+        CheckConstraint('revision >= 1', name='ck_read_destination_revision'),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'))
+    agent_id: Mapped[str] = mapped_column(ForeignKey('agents.id'))
+    host: Mapped[str] = mapped_column(String(253))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class Agent(Base):
     __tablename__ = 'agents'
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
