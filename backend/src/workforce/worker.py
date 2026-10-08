@@ -18,8 +18,15 @@ from .collaboration import record_candidate
 from . import providers
 from .providers import GenerationRequest, GenerationResponse, ProviderError, TextMessage
 from .governed_call import governed_generate, price_for
+from .schedule_dispatch import schedule_due_once
 
 RESERVATION = Decimal('0.010000')
+SCHEDULE_TICK = 'workforce-daily-tick-v1'
+
+
+@DBOS.workflow()
+def schedule_tick(scheduled_at: datetime, _context: object) -> int:
+    return schedule_due_once(at=scheduled_at)
 
 
 def release_reservation(db, execution: Execution) -> None:
@@ -183,6 +190,14 @@ def main() -> None:
     DBOS(config={'name': 'workforce', 'system_database_url': settings.workflow_url, 'application_version': 'usage-normalization-v1', 'run_migrations': False, 'log_level': 'WARNING'})
     DBOS.launch()
     try:
+        if not any(row['schedule_name'] == SCHEDULE_TICK
+                   for row in DBOS.list_schedules()):
+            DBOS.create_schedule(schedule_name=SCHEDULE_TICK,
+                                 workflow_fn=schedule_tick,
+                                 schedule='0 * * * * *',
+                                 automatic_backfill=False,
+                                 cron_timezone='UTC')
+        schedule_due_once(at=now())
         while True:
             dispatch_once()
             apply_approved_artifacts()
