@@ -116,7 +116,7 @@ Updated: 2026-10-08. This is the execution ledger for the approved AI workforce 
 
 ## Phase 7 tasks
 
-- [ ] **7.1 Bounded external-read contract.** Define a typed, size/time-limited HTTP read tool and explicit destination grants. Use a local synthetic HTTP server and keep broad network access disabled.
+- [x] **7.1 Bounded external-read contract.** Define strict request/grant/result contracts and one bounded loopback-only HTTP fixture behind an explicit test flag. Verify exact project/agent/port grant, default denial, redirect/size/timeout limits and provenance against a local synthetic server. It is not registered as a product tool. Evidence: `docs/research/local-read-contract-validation.md`.
 - [ ] **7.2 Network boundary.** Resolve and pin public addresses; reject private, loopback, link-local and metadata destinations, unsafe redirects, DNS rebinding and oversized responses. Recheck authority at execution.
 - [ ] **7.3 Untrusted content and provenance.** Store read observations with source URL, retrieval time, content digest and external trust label. Verify prompt injection cannot change grants, reveal credentials or bypass approvals.
 - [ ] **7.4 Phase 7 gate.** Run deterministic SSRF, redirect, rebinding, scope, budget, provenance, restart and cancellation tests; build and smoke Compose before enabling any controlled outbound read.

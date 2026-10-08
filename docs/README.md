@@ -40,6 +40,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 32. [Project activity and SSE](research/activity-sse-validation.md)
 33. [Scheduled and delegated daily budget](research/scheduled-daily-budget-validation.md)
 34. [Phase 6 fixture gate](research/phase-6-gate.md)
+35. [Local external-read contract](research/local-read-contract-validation.md)
 
 ## Architecture
 
@@ -63,4 +64,4 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 
 ## Current coding task
 
-Follow [progress.md](../progress.md) task by task. Phase 6 passed its fixture gate; Phase 7 begins with a bounded local synthetic external-read contract. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.
+Follow [progress.md](../progress.md) task by task. Phase 7.1 validated an isolated local read contract; network boundary and untrusted content checks follow before any product outbound read. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.
