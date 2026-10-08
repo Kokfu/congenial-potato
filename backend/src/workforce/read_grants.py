@@ -22,7 +22,7 @@ class GrantInput(BaseModel):
     model_config = ConfigDict(extra='forbid')
     project_id: UUID
     agent_id: UUID
-    host: str = Field(min_length=1, max_length=253)
+    host: str = Field(min_length=1, max_length=180)
     expires_at: datetime
     enabled: bool
 
@@ -38,6 +38,8 @@ def set_read_grant(db: Session, *, project_id: str, agent_id: str,
                    host: str, expires_at: datetime, enabled: bool,
                    owner_id: str) -> ReadDestinationGrant:
     host = canonical_public_host(host)
+    if len(host) > 180:
+        raise ReadDenied('Destination hostname exceeds policy resource limit')
     now = datetime.now(timezone.utc)
     if (expires_at.tzinfo is None or expires_at <= now or
             expires_at > now + timedelta(days=30)):

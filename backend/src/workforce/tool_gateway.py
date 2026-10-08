@@ -14,6 +14,9 @@ from .services import AccessDenied, authorize_agent_project
 from .tool_policy import evaluate_tool_policy
 from .tool_approval import create_tool_approval
 from .activity import record_activity
+from .network_policy import canonical_public_url
+from .local_read_experiment import ReadDenied
+from .read_grants import active_read_grant
 
 
 class MemorySearchArgs(BaseModel):
@@ -34,6 +37,14 @@ class ArtifactWriteArgs(BaseModel):
     artifact_id: UUID
     content: str = Field(min_length=1, max_length=65536)
     expected_parent: UUID | None = None
+
+
+class WebReadArgs(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    project_id: UUID
+    url: str = Field(min_length=1, max_length=2048)
+    max_bytes: int = Field(default=65536, ge=1, le=65536)
+    timeout_seconds: float = Field(default=3, gt=0, le=5)
 
 
 class ToolOutput(BaseModel):
@@ -64,6 +75,7 @@ DEFINITIONS = {definition.action: definition for definition in (
     ToolDefinition('project.memory.search', 1, MemorySearchArgs, 'read'),
     ToolDefinition('project.artifact.read', 1, ArtifactReadArgs, 'read'),
     ToolDefinition('project.artifact.write', 1, ArtifactWriteArgs, 'write', True),
+    ToolDefinition('project.web.read', 1, WebReadArgs, 'read', True),
 )}
 
 
@@ -98,12 +110,17 @@ def parse_tool_output(content: str) -> tuple[ToolDefinition, dict, str, str]:
             resource = f'project:{project_id}'
         elif definition.action == 'project.artifact.read':
             resource = f"project:{project_id}/artifact-version:{args['version_id']}"
-        else:
+        elif definition.action == 'project.artifact.write':
             resource = f"project:{project_id}/artifact:{args['artifact_id']}"
+        else:
+            host, _ = canonical_public_url(args['url'])
+            if len(host) > 180:
+                raise ToolProposalError('Destination hostname exceeds policy resource limit')
+            resource = f'project:{project_id}/web-origin:{host}'
         argument_hash = hashlib.sha256(json.dumps(args, sort_keys=True,
                                                   separators=(',', ':')).encode()).hexdigest()
         return definition, args, resource, argument_hash
-    except (ValueError, TypeError, ValidationError) as exc:
+    except (ValueError, TypeError, ValidationError, ReadDenied) as exc:
         raise ToolProposalError('Invalid tool proposal') from exc
 
 
@@ -131,14 +148,25 @@ def record_tool_output(db: Session, execution: Execution,
     decision = evaluate_tool_policy(db, agent_id=execution.agent_id,
                                     project_id=task.project_id,
                                     action=definition.action, resource=resource)
-    status = {'deny': 'denied', 'allow': 'admitted',
-              'require_approval': 'awaiting_approval'}[decision.effect]
+    snapshot = decision.snapshot
+    if definition.action == 'project.web.read' and decision.effect != 'deny':
+        try:
+            host, _ = canonical_public_url(args['url'])
+            active_read_grant(db, project_id=task.project_id,
+                              agent_id=execution.agent_id, host=host)
+        except ReadDenied:
+            snapshot = {**snapshot, 'reason': 'destination_grant_unavailable'}
+            decision = type(decision)('deny', snapshot)
+    status = ({'deny': 'denied', 'allow': 'admitted',
+               'require_approval': 'awaiting_approval'}[decision.effect]
+              if definition.action != 'project.web.read' else
+              ('denied' if decision.effect == 'deny' else 'proposed'))
     row = ToolInvocation(execution_id=execution.id, project_id=task.project_id,
                          action=definition.action, definition_version=definition.version,
                          schema_hash=definition.schema_hash, argument_hash=argument_hash,
                          arguments=args, resource=resource, effect=definition.effect,
                          policy_decision=decision.effect,
-                         policy_snapshot=decision.snapshot, status=status)
+                         policy_snapshot=snapshot, status=status)
     db.add(row)
     db.flush()
     if row.status == 'awaiting_approval':

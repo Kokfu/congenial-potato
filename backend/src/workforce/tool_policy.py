@@ -27,7 +27,13 @@ def canonical_policy_resource(action: str, project_id: str,
         raise PolicyError('Tool action unavailable')
     try:
         project = str(UUID(project_id))
-        resource = str(UUID(resource_id)) if resource_id else None
+        if action == 'project.web.read' and resource_id is not None:
+            from .network_policy import canonical_public_host
+            resource = canonical_public_host(resource_id)
+            if len(resource) > 180:
+                raise ValueError('Host too long')
+        else:
+            resource = str(UUID(resource_id)) if resource_id else None
     except (ValueError, AttributeError) as exc:
         raise PolicyError('Invalid resource identifier') from exc
     prefix = f'project:{project}'
@@ -37,6 +43,8 @@ def canonical_policy_resource(action: str, project_id: str,
         return f'{prefix}/artifact-version:{resource}'
     if action == 'project.artifact.write':
         return f'{prefix}/artifact:{resource}'
+    if action == 'project.web.read':
+        return f'{prefix}/web-origin:{resource}'
     raise PolicyError('Tool has no subresource scope')
 
 
@@ -82,7 +90,8 @@ def evaluate_tool_policy(db: Session, *, agent_id: str, project_id: str,
         return PolicyDecision('deny', {'reason': 'unknown_tool_or_project'})
     if resource != prefix:
         segment = ('artifact-version:' if action == 'project.artifact.read' else
-                   'artifact:' if action == 'project.artifact.write' else '')
+                   'artifact:' if action == 'project.artifact.write' else
+                   'web-origin:' if action == 'project.web.read' else '')
         expected_start = prefix + '/' + segment
         if not segment or not resource.startswith(expected_start):
             return PolicyDecision('deny', {'reason': 'resource_scope_denied'})
