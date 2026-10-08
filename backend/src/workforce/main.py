@@ -50,7 +50,7 @@ class AgentInput(BaseModel):
     instructions: str = Field(min_length=1, max_length=20000)
     provider_connection: str = Field(min_length=1, max_length=120)
     model_id: str = Field(min_length=1, max_length=160)
-    output_contract: Literal['text', 'collaboration.v1'] = 'text'
+    output_contract: Literal['text', 'collaboration.v1', 'memory.v1'] = 'text'
 
 
 class TaskInput(BaseModel):
@@ -127,7 +127,7 @@ def create_agent(data: AgentInput, session: OwnerSession = Depends(require_csrf)
         capabilities = providers.registry.get(data.provider_connection).describe_capabilities(data.model_id)
     except ProviderError as exc:
         raise HTTPException(422, str(exc)) from exc
-    if data.output_contract == 'collaboration.v1' and not capabilities.structured_output:
+    if data.output_contract in ('collaboration.v1', 'memory.v1') and not capabilities.structured_output:
         raise HTTPException(422, 'Selected model lacks validated structured output')
     agent = Agent(name=data.name, role=data.role)
     db.add(agent)
@@ -322,3 +322,5 @@ from .message_api import router as message_router  # noqa: E402
 app.include_router(message_router)
 from .collaboration_api import router as collaboration_router  # noqa: E402
 app.include_router(collaboration_router)
+from .memory_api import router as memory_router  # noqa: E402
+app.include_router(memory_router)

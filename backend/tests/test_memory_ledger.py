@@ -29,7 +29,7 @@ def test_candidate_lineage_and_scope():
         db.add(private)
         db.flush()
         candidate = add_candidate(db, project_id=p1.id, agent_id=agent.id,
-                                  kind='claim', content='Synthetic claim',
+                                  kind='claim', subject_key='sample-claim', content='Synthetic claim',
                                   trust_origin='model_inference', sources=[('task', t1.id)])
         db.commit()
         found = get_record(db, project_id=p1.id, agent_id=agent.id, record_id=candidate.id)
@@ -51,10 +51,10 @@ def test_cross_project_sources_and_false_authority_fail_closed():
         for source in [('task', t2.id), ('artifact_version', t1.id), ('task', 'missing')]:
             with pytest.raises(AccessDenied):
                 add_candidate(db, project_id=p1.id, agent_id=agent.id,
-                              kind='fact', content='Forbidden', trust_origin='external_claim',
+                              kind='fact', subject_key='forbidden', content='Forbidden', trust_origin='external_claim',
                               sources=[source])
         with pytest.raises(ValueError):
             add_candidate(db, project_id=p1.id, agent_id=agent.id,
-                          kind='decision', content='Promote me',
+                          kind='decision', subject_key='promotion', content='Promote me',
                           trust_origin='approved_decision', sources=[('task', t1.id)])
         assert db.scalars(select(MemoryRecord)).all() == []
