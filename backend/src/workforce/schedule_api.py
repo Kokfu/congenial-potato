@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .db import db_session
-from .models import AuditEvent, OwnerSession, Project, Schedule
+from .models import AuditEvent, OwnerSession, Project, Schedule, ScheduleOccurrence, now
 from .security import current_session, require_csrf
 from .services import AccessDenied, authorize_agent_project
 
@@ -28,7 +28,13 @@ def detail(row: Schedule) -> dict:
             'title': row.title, 'timezone': row.timezone,
             'local_time': f'{row.local_hour:02d}:{row.local_minute:02d}',
             'root_cap': row.root_cap, 'enabled': row.enabled,
-            'revision': row.revision, 'created_at': row.created_at}
+            'revision': row.revision, 'created_at': row.created_at,
+            'last_checked_at': row.last_checked_at}
+
+
+class ScheduleStateInput(BaseModel):
+    enabled: bool
+    expected_revision: int = Field(ge=1)
 
 
 @router.get('/api/schedules')
@@ -66,3 +72,42 @@ def create_schedule(data: ScheduleInput, session: OwnerSession = Depends(require
                       detail={'project_id': data.project_id, 'agent_id': data.agent_id}))
     db.commit()
     return detail(row)
+
+
+@router.post('/api/schedules/{schedule_id}/state')
+def set_schedule_state(schedule_id: str, data: ScheduleStateInput,
+                       session: OwnerSession = Depends(require_csrf),
+                       db: Session = Depends(db_session)):
+    row = db.execute(select(Schedule).where(Schedule.id == schedule_id)
+                     .with_for_update()).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(404, 'Schedule not found')
+    if row.revision != data.expected_revision:
+        raise HTTPException(409, 'Schedule revision changed')
+    if data.enabled:
+        try:
+            authorize_agent_project(db, row.agent_id, row.project_id, 'project.execute')
+        except AccessDenied as exc:
+            raise HTTPException(403, 'Project access denied') from exc
+    row.enabled = data.enabled
+    row.last_checked_at = now()
+    row.revision += 1
+    db.add(AuditEvent(actor=session.owner_id, action='schedule.state',
+                      resource=row.id, outcome='allowed',
+                      detail={'enabled': data.enabled, 'revision': row.revision}))
+    db.commit()
+    return detail(row)
+
+
+@router.get('/api/schedules/{schedule_id}/occurrences')
+def list_occurrences(schedule_id: str, _: OwnerSession = Depends(current_session),
+                     db: Session = Depends(db_session)):
+    if db.get(Schedule, schedule_id) is None:
+        raise HTTPException(404, 'Schedule not found')
+    rows = db.scalars(select(ScheduleOccurrence).where(
+        ScheduleOccurrence.schedule_id == schedule_id).order_by(
+        ScheduleOccurrence.local_date.desc()).limit(100)).all()
+    return [{'id': row.id, 'local_date': row.local_date,
+             'scheduled_for': row.scheduled_for, 'status': row.status,
+             'reason': row.reason, 'execution_id': row.execution_id}
+            for row in rows]

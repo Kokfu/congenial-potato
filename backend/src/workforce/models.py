@@ -102,6 +102,22 @@ class Schedule(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     revision: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ScheduleOccurrence(Base):
+    __tablename__ = 'schedule_occurrences'
+    __table_args__ = (UniqueConstraint('schedule_id', 'local_date',
+                                       name='uq_schedule_occurrence_day'),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    schedule_id: Mapped[str] = mapped_column(ForeignKey('schedules.id'))
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'))
+    local_date: Mapped[date] = mapped_column(Date)
+    scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(30))
+    reason: Mapped[str | None] = mapped_column(String(100))
+    execution_id: Mapped[str | None] = mapped_column(ForeignKey('executions.id'), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class Task(Base):
