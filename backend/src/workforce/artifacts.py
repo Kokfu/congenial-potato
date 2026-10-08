@@ -79,7 +79,8 @@ def apply_approved_artifacts(after_file_write: Callable[[], None] | None = None)
     from .db import session_factory
     applied = 0
     with session_factory()() as db:
-        rows = db.scalars(select(Approval).where(Approval.status == 'approved')
+        rows = db.scalars(select(Approval).where(
+            Approval.status == 'approved', Approval.tool_invocation_id.is_(None))
                           .order_by(Approval.id).with_for_update(skip_locked=True).limit(20)).all()
         for approval in rows:
             if not proposal_valid(db, approval):

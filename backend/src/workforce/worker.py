@@ -11,6 +11,7 @@ from .services import AccessDenied, authorize_agent_project, reserve_budget
 from .artifacts import apply_approved_artifacts, propose_fixture_artifact
 from .memory_runtime import record_memory_output
 from .tool_gateway import record_tool_output
+from .tool_effects import apply_admitted_tools
 from .memory_context import build_context
 from .cancellation import invalidate_cancelled_approvals, invalidate_cancelled_collaboration
 from .collaboration import record_candidate
@@ -185,6 +186,7 @@ def main() -> None:
         while True:
             dispatch_once()
             apply_approved_artifacts()
+            apply_admitted_tools()
             with session_factory()() as db:
                 approvals = invalidate_cancelled_approvals(db)
                 proposals = invalidate_cancelled_collaboration(db)

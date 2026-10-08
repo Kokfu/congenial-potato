@@ -90,9 +90,21 @@ def finish(state_path: Path) -> None:
             'approved': True, 'payload_hash': state['payload_hash']}, headers)
         assert response['status'] == 'admitted'
         assert response['approval_status'] == 'approved'
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            current = client.get('/api/tool-invocations',
+                                 params={'project_id': state['project_id']}).json()[0]
+            if current['status'] == 'succeeded':
+                break
+            if current['status'] in ('failed', 'invalidated', 'unknown'):
+                raise AssertionError(current)
+            time.sleep(.3)
+        else:
+            raise AssertionError(f"Tool stayed {current['status']}")
+        assert current['result']['simulated'] is True
         assert client.get('/api/artifacts', params={
             'project_id': state['project_id']}).json() == []
-        print('finish=passed; approval=approved; invocation=admitted; tool_effects=0')
+        print('finish=passed; approval=approved; invocation=succeeded; synthetic_effects=1; artifact_versions=0')
     finally:
         client.close()
 
