@@ -34,7 +34,7 @@ class ConfigUpdate(BaseModel):
     provider_connection: str = Field(min_length=1, max_length=120)
     model_id: str = Field(min_length=1, max_length=160)
     price_envelope: PriceEnvelope | None = None
-    output_contract: Literal['text', 'collaboration.v1', 'memory.v1'] = 'text'
+    output_contract: Literal['text', 'collaboration.v1', 'memory.v1', 'tool.v1'] = 'text'
 
 
 @router.get('/api/provider-connections')
@@ -71,7 +71,7 @@ def update_agent_config(agent_id: str, data: ConfigUpdate, session: OwnerSession
         capabilities = providers.registry.get(data.provider_connection).describe_capabilities(data.model_id)
     except ProviderError as exc:
         raise HTTPException(422, str(exc)) from exc
-    if data.output_contract in ('collaboration.v1', 'memory.v1') and not capabilities.structured_output:
+    if data.output_contract in ('collaboration.v1', 'memory.v1', 'tool.v1') and not capabilities.structured_output:
         raise HTTPException(422, 'Selected model lacks validated structured output')
     price = data.price_envelope
     if price is not None:
@@ -79,7 +79,7 @@ def update_agent_config(agent_id: str, data: ConfigUpdate, session: OwnerSession
             raise HTTPException(422, 'Price envelope must match the selected connection and model')
         if (price.max_input_tokens > capabilities.max_input_tokens or
                 price.max_output_tokens > capabilities.max_output_tokens or
-                price.max_output_tokens < (512 if data.output_contract in ('collaboration.v1', 'memory.v1') else 128)):
+                price.max_output_tokens < (512 if data.output_contract in ('collaboration.v1', 'memory.v1', 'tool.v1') else 128)):
             raise HTTPException(422, 'Price envelope token bounds do not support the selected model request')
         try:
             upper = price.upper_bound()

@@ -2,7 +2,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Approval, AuditEvent, CollaborationProposal, Execution, MemoryRecord, Task
+from .models import Approval, AuditEvent, CollaborationProposal, Execution, MemoryRecord, Task, ToolInvocation
 
 
 class CancellationError(ValueError):
@@ -74,6 +74,13 @@ def cancel_subtree(db: Session, execution_id: str, actor: str) -> tuple[Executio
     for candidate in memory_candidates:
         candidate.status = 'invalidated'
         db.add(AuditEvent(actor=actor, action='memory.review', resource=candidate.id,
+                          outcome='invalidated', detail={'reason': 'execution_cancelled'}))
+    tools = db.scalars(select(ToolInvocation).where(
+        ToolInvocation.execution_id.in_(descendants),
+        ToolInvocation.status == 'proposed').with_for_update()).all()
+    for invocation in tools:
+        invocation.status = 'invalidated'
+        db.add(AuditEvent(actor=actor, action='tool.propose', resource=invocation.id,
                           outcome='invalidated', detail={'reason': 'execution_cancelled'}))
     return db.get(Execution, execution_id), changed
 

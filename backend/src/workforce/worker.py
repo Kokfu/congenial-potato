@@ -10,6 +10,7 @@ from .models import AgentConfigVersion, AuditEvent, BudgetAccount, BudgetReserva
 from .services import AccessDenied, authorize_agent_project, reserve_budget
 from .artifacts import apply_approved_artifacts, propose_fixture_artifact
 from .memory_runtime import record_memory_output
+from .tool_gateway import record_tool_output
 from .memory_context import build_context
 from .cancellation import invalidate_cancelled_approvals, invalidate_cancelled_collaboration
 from .collaboration import record_candidate
@@ -47,8 +48,8 @@ def generate_step(execution_id: str) -> dict:
             messages.append(TextMessage(role='user', trust_origin='external', text=context))
         request = GenerationRequest(request_id=execution_id, model_id=config.model_id,
                                     messages=tuple(messages),
-                                    max_output_tokens=(512 if (config.config or {}).get('output_contract') in ('collaboration.v1', 'memory.v1') else 128),
-                                    require_structured_output=(config.config or {}).get('output_contract') in ('collaboration.v1', 'memory.v1'),
+                                    max_output_tokens=(512 if (config.config or {}).get('output_contract') in ('collaboration.v1', 'memory.v1', 'tool.v1') else 128),
+                                    require_structured_output=(config.config or {}).get('output_contract') in ('collaboration.v1', 'memory.v1', 'tool.v1'),
                                     deadline_at=datetime.now(timezone.utc) + timedelta(
                                         seconds=get_settings().model_call_timeout_seconds))
         connection = config.provider_connection
@@ -119,6 +120,8 @@ def complete_step(execution_id: str, result: dict) -> str:
             record_candidate(db, execution, response.content)
         elif (config.config or {}).get('output_contract') == 'memory.v1':
             record_memory_output(db, execution, response.content)
+        elif (config.config or {}).get('output_contract') == 'tool.v1':
+            record_tool_output(db, execution, response.content)
         else:
             propose_fixture_artifact(db, execution, response.content)
         release_reservation(db, execution)
