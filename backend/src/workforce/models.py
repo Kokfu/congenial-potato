@@ -225,6 +225,41 @@ class ArtifactVersion(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class MemoryRecord(Base):
+    __tablename__ = 'memory_records'
+    __table_args__ = (
+        CheckConstraint("kind IN ('fact', 'decision', 'observation', 'claim')", name='ck_memory_kind'),
+        CheckConstraint("trust_origin IN ('human_instruction', 'approved_decision', 'observed_result', 'external_claim', 'model_inference')", name='ck_memory_trust_origin'),
+        CheckConstraint("status IN ('candidate', 'active', 'superseded', 'tombstoned')", name='ck_memory_status'),
+        CheckConstraint('valid_until IS NULL OR valid_from IS NULL OR valid_until > valid_from', name='ck_memory_validity'),
+        Index('ix_memory_project_status_created', 'project_id', 'status', 'created_at'),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'))
+    kind: Mapped[str] = mapped_column(String(30))
+    content: Mapped[str] = mapped_column(Text)
+    trust_origin: Mapped[str] = mapped_column(String(30))
+    status: Mapped[str] = mapped_column(String(30), default='candidate')
+    creator_kind: Mapped[str] = mapped_column(String(30))
+    creator_id: Mapped[str] = mapped_column(String(36))
+    valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    superseded_by_id: Mapped[str | None] = mapped_column(ForeignKey('memory_records.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class MemorySource(Base):
+    __tablename__ = 'memory_sources'
+    __table_args__ = (
+        UniqueConstraint('record_id', 'source_kind', 'source_id', name='uq_memory_source_ref'),
+        CheckConstraint("source_kind IN ('task', 'execution', 'message', 'artifact_version', 'memory_record')", name='ck_memory_source_kind'),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    record_id: Mapped[str] = mapped_column(ForeignKey('memory_records.id'))
+    source_kind: Mapped[str] = mapped_column(String(30))
+    source_id: Mapped[str] = mapped_column(String(36))
+
+
 class BudgetAccount(Base):
     __tablename__ = 'budget_accounts'
     root_id: Mapped[str] = mapped_column(String(36), primary_key=True)
