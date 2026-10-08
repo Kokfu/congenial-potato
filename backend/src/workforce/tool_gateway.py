@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from .models import AuditEvent, Execution, Task, ToolInvocation
 from .services import AccessDenied, authorize_agent_project
+from .tool_policy import evaluate_tool_policy
 
 
 class MemorySearchArgs(BaseModel):
@@ -119,16 +120,23 @@ def record_tool_output(db: Session, execution: Execution,
                           detail={'reason': str(exc)},
                           effect_key=f'tool.parse:{execution.id}'))
         return None
+    decision = evaluate_tool_policy(db, agent_id=execution.agent_id,
+                                    project_id=task.project_id,
+                                    action=definition.action, resource=resource)
+    status = {'deny': 'denied', 'allow': 'admitted',
+              'require_approval': 'awaiting_approval'}[decision.effect]
     row = ToolInvocation(execution_id=execution.id, project_id=task.project_id,
                          action=definition.action, definition_version=definition.version,
                          schema_hash=definition.schema_hash, argument_hash=argument_hash,
                          arguments=args, resource=resource, effect=definition.effect,
-                         status='proposed')
+                         policy_decision=decision.effect,
+                         policy_snapshot=decision.snapshot, status=status)
     db.add(row)
     db.flush()
     db.add(AuditEvent(actor=execution.agent_id, action='tool.propose',
-                      resource=row.id, outcome='pending',
+                      resource=row.id, outcome=status,
                       detail={'action': row.action, 'resource': resource,
                               'schema_hash': row.schema_hash,
-                              'argument_hash': row.argument_hash}))
+                              'argument_hash': row.argument_hash,
+                              'policy_snapshot': row.policy_snapshot}))
     return row

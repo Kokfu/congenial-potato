@@ -186,6 +186,11 @@ class Execution(Base):
 
 class PolicyRule(Base):
     __tablename__ = 'policy_rules'
+    __table_args__ = (
+        UniqueConstraint('subject', 'action', 'resource', name='uq_policy_subject_action_resource'),
+        CheckConstraint("effect IN ('allow', 'deny', 'require_approval')", name='ck_policy_effect'),
+        CheckConstraint('revision >= 1', name='ck_policy_revision'),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     subject: Mapped[str] = mapped_column(String(160))
     action: Mapped[str] = mapped_column(String(100))
@@ -221,6 +226,8 @@ class ToolInvocation(Base):
     arguments: Mapped[dict] = mapped_column(JSON)
     resource: Mapped[str] = mapped_column(String(240))
     effect: Mapped[str] = mapped_column(String(30))
+    policy_decision: Mapped[str] = mapped_column(String(30), default='deny')
+    policy_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(30), default='proposed')
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
