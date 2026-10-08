@@ -333,3 +333,5 @@ from .tool_api import router as tool_router  # noqa: E402
 app.include_router(tool_router)
 from .tool_policy_api import router as tool_policy_router  # noqa: E402
 app.include_router(tool_policy_router)
+from .schedule_api import router as schedule_router  # noqa: E402
+app.include_router(schedule_router)

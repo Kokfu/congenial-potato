@@ -82,6 +82,28 @@ class AgentProjectGrant(Base):
     allowed: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class Schedule(Base):
+    __tablename__ = 'schedules'
+    __table_args__ = (
+        CheckConstraint('local_hour BETWEEN 0 AND 23', name='ck_schedule_hour'),
+        CheckConstraint('local_minute BETWEEN 0 AND 59', name='ck_schedule_minute'),
+        CheckConstraint('root_cap > 0', name='ck_schedule_root_cap'),
+        CheckConstraint('revision >= 1', name='ck_schedule_revision'),
+        Index('ix_schedules_enabled', 'enabled', 'id'),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'))
+    agent_id: Mapped[str] = mapped_column(ForeignKey('agents.id'))
+    title: Mapped[str] = mapped_column(String(240))
+    timezone: Mapped[str] = mapped_column(String(100))
+    local_hour: Mapped[int] = mapped_column(Integer)
+    local_minute: Mapped[int] = mapped_column(Integer)
+    root_cap: Mapped[Decimal] = mapped_column(Numeric(12, 6))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class Task(Base):
     __tablename__ = 'tasks'
     __table_args__ = (UniqueConstraint('project_id', 'work_key', name='uq_task_project_work_key'),)
