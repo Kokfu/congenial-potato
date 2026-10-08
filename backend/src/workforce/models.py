@@ -1,7 +1,8 @@
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, JSON
+from sqlalchemy import Boolean, CheckConstraint, Computed, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, JSON
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 from .db import Base
 
@@ -233,12 +234,15 @@ class MemoryRecord(Base):
         CheckConstraint("status IN ('candidate', 'active', 'rejected', 'invalidated', 'superseded', 'tombstoned')", name='ck_memory_status'),
         CheckConstraint('valid_until IS NULL OR valid_from IS NULL OR valid_until > valid_from', name='ck_memory_validity'),
         Index('ix_memory_project_status_created', 'project_id', 'status', 'created_at'),
+        Index('ix_memory_content_fts', 'search_vector', postgresql_using='gin'),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'))
     kind: Mapped[str] = mapped_column(String(30))
     subject_key: Mapped[str] = mapped_column(String(100), default='')
     content: Mapped[str] = mapped_column(Text)
+    search_vector: Mapped[str] = mapped_column(
+        TSVECTOR, Computed("to_tsvector('english', content)", persisted=True))
     payload_hash: Mapped[str] = mapped_column(String(64), default='')
     trust_origin: Mapped[str] = mapped_column(String(30))
     status: Mapped[str] = mapped_column(String(30), default='candidate')
@@ -274,6 +278,8 @@ class MemoryConflict(Base):
     other_record_id: Mapped[str] = mapped_column(ForeignKey('memory_records.id'))
     acknowledged_by_id: Mapped[str] = mapped_column(ForeignKey('owners.id'))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 
 
 class BudgetAccount(Base):

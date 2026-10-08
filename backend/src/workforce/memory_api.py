@@ -6,11 +6,25 @@ from sqlalchemy.orm import Session
 
 from .db import db_session
 from .memory import MemoryReviewError, review_candidate
+from .memory_search import search_project_records
 from .models import MemoryRecord, MemorySource, OwnerSession, Project
 from .security import current_session, require_csrf
 from .services import AccessDenied
 
 router = APIRouter()
+
+
+@router.get('/api/memory/search')
+def search_memory(project_id: str, query: str, limit: int = 20,
+                  _: OwnerSession = Depends(current_session),
+                  db: Session = Depends(db_session)):
+    if db.get(Project, project_id) is None:
+        raise HTTPException(404, 'Project not found')
+    try:
+        hits = search_project_records(db, project_id=project_id, query=query, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return [hit.__dict__ for hit in hits]
 
 
 class ReviewInput(BaseModel):

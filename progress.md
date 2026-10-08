@@ -94,7 +94,7 @@ Updated: 2026-10-08. This is the execution ledger for the approved AI workforce 
 
 - [x] **4.1 Scoped knowledge ledger.** Migrate project facts, decisions, observations and model claims with typed trust origin, source references, validity and supersession. Enforce project scope before metadata or content retrieval. Evidence: `docs/research/memory-ledger-validation.md`.
 - [x] **4.2 Reviewed memory writes.** Let agents propose memory candidates; require owner review for promoted decisions. Preserve contradictions and source lineage instead of silently overwriting records. Evidence: `docs/research/reviewed-memory-validation.md`.
-- [ ] **4.3 Bounded lexical retrieval.** Use PostgreSQL full-text search with project filters applied before ranking and snippets. Evaluate exact requirements, stale facts and irrelevant records using fixed fixtures; add no vector dependency without measured need.
+- [x] **4.3 Bounded lexical retrieval.** Use PostgreSQL full-text search with project filters applied before ranking and snippets. Evaluate exact requirements, stale facts and irrelevant records using fixed fixtures; add no vector dependency without measured need. Evidence: `docs/research/lexical-memory-validation.md`.
 - [ ] **4.4 Cited summaries and context assembly.** Persist versioned, cited project summaries and assemble bounded task context by trust priority. Reject summaries that promote untrusted claims to instructions.
 - [ ] **4.5 Artifact provenance and Phase 4 gate.** Verify exact immutable artifact/version retrieval, scope and content digests alongside memory citations. Check restart and supersession behavior before marking Phase 4 complete.
 
