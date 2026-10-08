@@ -108,7 +108,7 @@ Updated: 2026-10-08. This is the execution ledger for the approved AI workforce 
 
 ## Phase 6 tasks
 
-- [ ] **6.1 Daily schedule contract and persistence.** Define owner-managed UTC schedules with bounded missed occurrences, overlap policy, idempotent occurrence keys and project/agent authorization. Migrate persistent schedule records; use a deterministic fake clock for cases around restart.
+- [x] **6.1 Daily schedule contract and persistence.** Persist inert owner-created daily schedules with IANA timezone, local time, agent/project scope and root cap. A pure planner coalesces to the latest due occurrence inside 24 hours, skips nonexistent DST times and selects the first repeated time; it emits a stable date key. Activation, overlap enforcement and dispatch are task 6.2. Evidence: `docs/research/daily-schedule-contract.md`.
 - [ ] **6.2 Durable schedule dispatch.** Enqueue one logical execution per occurrence outside the HTTP request. Recheck policy, cancellation and shared budget before dispatch. Test restart before and after a due occurrence, missed-run bounds and duplicate/overlapping workers.
 - [ ] **6.3 Activity timeline and SSE.** Expose project-scoped, ordered persisted activity with reconnect cursor, heartbeat and no metadata leakage. Keep REST commands; test disconnect/reconnect and browser-close independence.
 - [ ] **6.4 Shared daily budget integration.** Verify scheduled and manually delegated work share the same root and UTC daily holds, with concurrency, unknown charges and rollover checks. Keep live providers disabled.

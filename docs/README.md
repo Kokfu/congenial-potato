@@ -35,6 +35,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 27. [Durable tool approval](research/tool-approval-validation.md)
 28. [Synthetic tool effects](research/tool-effect-validation.md)
 29. [Phase 5 governed tool fixture gate](research/phase-5-gate.md)
+30. [Daily schedule contract](research/daily-schedule-contract.md)
 
 ## Architecture
 
@@ -58,4 +59,4 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 
 ## Current coding task
 
-Follow [progress.md](../progress.md) task by task. Phase 6 schedules, activity and shared daily budgets follow the completed Phase 5 fixture gate. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.
+Follow [progress.md](../progress.md) task by task. Phase 6.1 persisted inert schedule definitions and due-time calculation; Phase 6.2 will implement durable dispatch. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.
