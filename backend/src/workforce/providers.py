@@ -176,18 +176,18 @@ class FakeAdapter:
         return 'fixture_ready'
 
 
-class CollaborationFixtureAdapter(FakeAdapter):
+class StructuredFixtureAdapter(FakeAdapter):
     """Echo a synthetic JSON fixture through the provider response boundary."""
+    prefix: str
 
     def generate(self, request: GenerationRequest) -> GenerationResponse:
         self._validate(request)
-        prefix = 'FIXTURE_COLLAB_JSON:'
         instruction = next((message.text for message in request.messages
                             if message.role == 'system'), '')
-        if not instruction.startswith(prefix):
+        if not instruction.startswith(self.prefix):
             raise ProviderError(ProviderErrorKind.INVALID_REQUEST,
-                                'Fixture collaboration response is unavailable')
-        content = instruction[len(prefix):].strip()
+                                'Fixture structured response is unavailable')
+        content = instruction[len(self.prefix):].strip()
         return GenerationResponse(content=content, actual_model=request.model_id,
                                   provider_request_id=f'fixture:{self.connection_id}:{request.request_id}',
                                   finish_reason='stop',
@@ -195,21 +195,16 @@ class CollaborationFixtureAdapter(FakeAdapter):
                                               output_tokens=len(content) // 4 + 1))
 
 
-class MemoryFixtureAdapter(CollaborationFixtureAdapter):
-    def generate(self, request: GenerationRequest) -> GenerationResponse:
-        self._validate(request)
-        prefix = 'FIXTURE_MEMORY_JSON:'
-        instruction = next((message.text for message in request.messages
-                            if message.role == 'system'), '')
-        if not instruction.startswith(prefix):
-            raise ProviderError(ProviderErrorKind.INVALID_REQUEST,
-                                'Fixture memory response is unavailable')
-        content = instruction[len(prefix):].strip()
-        return GenerationResponse(content=content, actual_model=request.model_id,
-                                  provider_request_id=f'fixture:{self.connection_id}:{request.request_id}',
-                                  finish_reason='stop',
-                                  usage=Usage(input_tokens=len(request.input_text) // 4 + 1,
-                                              output_tokens=len(content) // 4 + 1))
+class CollaborationFixtureAdapter(StructuredFixtureAdapter):
+    prefix = 'FIXTURE_COLLAB_JSON:'
+
+
+class MemoryFixtureAdapter(StructuredFixtureAdapter):
+    prefix = 'FIXTURE_MEMORY_JSON:'
+
+
+class ToolFixtureAdapter(StructuredFixtureAdapter):
+    prefix = 'FIXTURE_TOOL_JSON:'
 
 
 class ProviderRegistry:
@@ -240,6 +235,8 @@ def fixture_registry() -> ProviderRegistry:
             CatalogModel(model_id='collaboration-v1', capabilities=advanced),)),
         MemoryFixtureAdapter('fixture-memory', (
             CatalogModel(model_id='memory-v1', capabilities=advanced),)),
+        ToolFixtureAdapter('fixture-tool', (
+            CatalogModel(model_id='tool-v1', capabilities=advanced),)),
         FakeAdapter('fixture-timeout', (CatalogModel(model_id='timeout-v1', capabilities=base),),
                     failure_kind=ProviderErrorKind.TIMEOUT),
     ))

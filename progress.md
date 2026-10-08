@@ -100,7 +100,7 @@ Updated: 2026-10-08. This is the execution ledger for the approved AI workforce 
 
 ## Phase 5 tasks
 
-- [ ] **5.1 Typed tool gateway.** Register versioned tool definitions and validated proposals. Canonicalize project resources and deny unknown tools, schema versions and arguments before any effect.
+- [x] **5.1 Typed tool gateway.** Register versioned tool definitions and validated proposals. Canonicalize project resources and deny unknown tools, schema versions and arguments before any effect. Evidence: `docs/research/tool-gateway-validation.md`.
 - [ ] **5.2 Policy and resource authority.** Enforce default deny and explicit-deny precedence for agent, project, tool and resource; recheck at proposal, approval and execution. Keep MCP as transport only.
 - [ ] **5.3 Exact-effect durable approval.** Bind approval to canonical arguments, schema, target precondition and expiry. Restart around approval and invalidate on change, revocation or cancellation.
 - [ ] **5.4 Idempotent synthetic effects.** Persist invocations and use an isolated fake effect ledger to verify replay, duplicate dispatch, unknown outcomes and reconciliation without external writes.

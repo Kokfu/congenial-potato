@@ -209,6 +209,22 @@ class Approval(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class ToolInvocation(Base):
+    __tablename__ = 'tool_invocations'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    execution_id: Mapped[str] = mapped_column(ForeignKey('executions.id'), unique=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'))
+    action: Mapped[str] = mapped_column(String(120))
+    definition_version: Mapped[int] = mapped_column(Integer)
+    schema_hash: Mapped[str] = mapped_column(String(64))
+    argument_hash: Mapped[str] = mapped_column(String(64))
+    arguments: Mapped[dict] = mapped_column(JSON)
+    resource: Mapped[str] = mapped_column(String(240))
+    effect: Mapped[str] = mapped_column(String(30))
+    status: Mapped[str] = mapped_column(String(30), default='proposed')
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class ArtifactVersion(Base):
     __tablename__ = 'artifact_versions'
     __table_args__ = (UniqueConstraint('artifact_id', 'version'),)
