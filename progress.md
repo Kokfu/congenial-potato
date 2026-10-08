@@ -34,7 +34,7 @@ Updated: 2026-10-08. This is the execution ledger for the approved AI workforce 
 - [x] Phase 3 fixture gate: validated plans, tasks, messages and bounded Manager/direct delegation with cycle, duplicate and cancellation tests. Agent-generated proposals pass through owner review and deterministic admission. Native activation remains separately gated.
 - [x] Phase 4 fixture gate: project-scoped facts, reviewed decisions, cited summaries, lexical retrieval and immutable artifact provenance checks. Evidence: `docs/research/phase-4-gate.md`.
 - [x] Phase 5 fixture gate: governed tool gateway, default-deny policy and exact-effect durable approval, including mutation/replay/restart tests. Evidence: `docs/research/phase-5-gate.md`.
-- [ ] Phase 6: daily schedule, SSE timeline and shared daily budget, including missed-run and reconnect tests.
+- [x] Phase 6 fixture gate: daily schedule, SSE timeline and shared daily budget, including missed-run and reconnect tests. Evidence: `docs/research/phase-6-gate.md`.
 - [ ] Phase 7: first bounded external read with SSRF and prompt-injection boundary tests.
 - [ ] Phase 8: isolated execution and external writes with idempotency and reconciliation.
 
@@ -112,7 +112,14 @@ Updated: 2026-10-08. This is the execution ledger for the approved AI workforce 
 - [x] **6.2 Durable schedule dispatch.** DBOS minute ticks and worker startup reconcile bounded due times into one occurrence/task/execution/outbox under a schedule lock. Recheck the project grant and config; the execution worker rechecks cancellation and root budget. Verify concurrent/replayed ticks, overlap/revocation skips and a stopped-worker due occurrence in Compose. Evidence: `docs/research/schedule-dispatch-validation.md`.
 - [x] **6.3 Activity timeline and SSE.** Add a per-project committed activity cursor, scoped REST/SSE reads, heartbeat and bounded connections. The browser observed new events, disconnected and resumed by query cursor and `Last-Event-ID`; backend tests checked scope and concurrent ordering. Activity covers core milestones; tool/collaboration event coverage remains for the gate. Evidence: `docs/research/activity-sse-validation.md`.
 - [x] **6.4 Shared daily budget integration.** A scheduled root and delegated child used the same priced fixture reservation path and UTC daily cap. One timeout hold remained unknown; the other run failed closed. The child shared its Manager root, and a next-day account did not release the prior hold. Existing ledger tests cover concurrent reservations. Evidence: `docs/research/scheduled-daily-budget-validation.md`.
-- [ ] **6.5 Phase 6 gate.** Run migration, backend, browser and local Compose restart checks. Record observed misfire/reconnect behavior and limitations before closing the fixture gate.
+- [x] **6.5 Phase 6 fixture gate.** Fill tool/collaboration activity milestones, isolate the activity cursor lock, backfill existing projects, and rerun migration, backend, browser and Compose checks. Evidence: `docs/research/phase-6-gate.md`.
+
+## Phase 7 tasks
+
+- [ ] **7.1 Bounded external-read contract.** Define a typed, size/time-limited HTTP read tool and explicit destination grants. Use a local synthetic HTTP server and keep broad network access disabled.
+- [ ] **7.2 Network boundary.** Resolve and pin public addresses; reject private, loopback, link-local and metadata destinations, unsafe redirects, DNS rebinding and oversized responses. Recheck authority at execution.
+- [ ] **7.3 Untrusted content and provenance.** Store read observations with source URL, retrieval time, content digest and external trust label. Verify prompt injection cannot change grants, reveal credentials or bypass approvals.
+- [ ] **7.4 Phase 7 gate.** Run deterministic SSRF, redirect, rebinding, scope, budget, provenance, restart and cancellation tests; build and smoke Compose before enabling any controlled outbound read.
 
 ## Working rules and evidence
 

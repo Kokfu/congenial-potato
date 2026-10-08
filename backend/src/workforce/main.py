@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 from .db import db_session
-from .models import Agent, AgentConfigVersion, AgentProjectGrant, Approval, ArtifactVersion, AuditEvent, BudgetAccount, Execution, Outbox, OwnerSession, Project, Task, now
+from .models import Agent, AgentConfigVersion, AgentProjectGrant, Approval, ArtifactVersion, AuditEvent, BudgetAccount, Execution, Outbox, OwnerSession, Project, ProjectActivityCursor, Task, now
 from .security import clear_auth_cookies, current_session, login, require_csrf, require_origin, set_auth_cookies
 from .services import AccessDenied, authorize_agent_project
 from .task_graph import dependencies_satisfied
@@ -102,6 +102,7 @@ def create_project(data: ProjectInput, session: OwnerSession = Depends(require_c
     row = Project(name=data.name, objective=data.objective)
     db.add(row)
     db.flush()
+    db.add(ProjectActivityCursor(project_id=row.id, sequence=0))
     db.add(AuditEvent(actor=session.owner_id, action='project.create', resource=row.id, outcome='allowed'))
     record_activity(db, project_id=row.id, actor=session.owner_id,
                     action='project.create', resource=row.id, outcome='allowed')

@@ -39,6 +39,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 31. [Durable schedule dispatch](research/schedule-dispatch-validation.md)
 32. [Project activity and SSE](research/activity-sse-validation.md)
 33. [Scheduled and delegated daily budget](research/scheduled-daily-budget-validation.md)
+34. [Phase 6 fixture gate](research/phase-6-gate.md)
 
 ## Architecture
 
@@ -62,4 +63,4 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 
 ## Current coding task
 
-Follow [progress.md](../progress.md) task by task. Phase 6.4 verified shared daily budget behavior for scheduled and delegated fixture work; the Phase 6 gate follows. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.
+Follow [progress.md](../progress.md) task by task. Phase 6 passed its fixture gate; Phase 7 begins with a bounded local synthetic external-read contract. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.

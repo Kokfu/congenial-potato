@@ -13,6 +13,7 @@ from .models import AuditEvent, Execution, Task, ToolInvocation
 from .services import AccessDenied, authorize_agent_project
 from .tool_policy import evaluate_tool_policy
 from .tool_approval import create_tool_approval
+from .activity import record_activity
 
 
 class MemorySearchArgs(BaseModel):
@@ -111,9 +112,9 @@ def record_tool_output(db: Session, execution: Execution,
     if db.scalar(select(ToolInvocation.id).where(
         ToolInvocation.execution_id == execution.id)) is not None:
         return None
+    task = db.get(Task, execution.task_id)
     try:
         definition, args, resource, argument_hash = parse_tool_output(content)
-        task = db.get(Task, execution.task_id)
         if task is None or args['project_id'] != task.project_id:
             raise AccessDenied('Tool project unavailable')
         authorize_agent_project(db, execution.agent_id, task.project_id, 'project.execute')
@@ -122,6 +123,10 @@ def record_tool_output(db: Session, execution: Execution,
                           resource=execution.id, outcome='denied',
                           detail={'reason': str(exc)},
                           effect_key=f'tool.parse:{execution.id}'))
+        if task is not None:
+            record_activity(db, project_id=task.project_id,
+                            actor=execution.agent_id, action='tool.parse',
+                            resource=execution.id, outcome='denied')
         return None
     decision = evaluate_tool_policy(db, agent_id=execution.agent_id,
                                     project_id=task.project_id,
@@ -144,4 +149,6 @@ def record_tool_output(db: Session, execution: Execution,
                               'schema_hash': row.schema_hash,
                               'argument_hash': row.argument_hash,
                               'policy_snapshot': row.policy_snapshot}))
+    record_activity(db, project_id=task.project_id, actor=execution.agent_id,
+                    action='tool.propose', resource=row.id, outcome=status)
     return row

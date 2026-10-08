@@ -11,6 +11,7 @@ from .memory_search import search_records
 from .models import (Approval, AuditEvent, BudgetAccount, Execution,
                      SyntheticToolEffect, ToolInvocation)
 from .tool_approval import _invalid_reason, invocation_invalid_reason
+from .activity import record_activity
 
 
 def _fake_result(db: Session, invocation: ToolInvocation,
@@ -49,6 +50,8 @@ def _finish_from_ledger(db: Session, invocation: ToolInvocation,
                       resource=invocation.id, outcome=outcome,
                       effect_key=f'tool-effect:{invocation.id}',
                       detail={'ledger_key': effect.invocation_key}))
+    record_activity(db, project_id=invocation.project_id, actor='worker',
+                    action='tool.apply', resource=invocation.id, outcome=outcome)
 
 
 def apply_admitted_tools(after_ledger_commit: Callable[[], None] | None = None) -> int:
@@ -102,6 +105,9 @@ def apply_admitted_tools(after_ledger_commit: Callable[[], None] | None = None) 
                 db.add(AuditEvent(actor='worker', action='tool.apply',
                                   resource=invocation.id, outcome='denied',
                                   detail={'reason': reason}))
+                record_activity(db, project_id=invocation.project_id,
+                                actor='worker', action='tool.apply',
+                                resource=invocation.id, outcome='denied')
                 db.commit()
                 continue
             try:
@@ -111,6 +117,9 @@ def apply_admitted_tools(after_ledger_commit: Callable[[], None] | None = None) 
                 db.add(AuditEvent(actor='worker', action='tool.apply',
                                   resource=invocation.id, outcome='failed',
                                   detail={'reason': type(exc).__name__}))
+                record_activity(db, project_id=invocation.project_id,
+                                actor='worker', action='tool.apply',
+                                resource=invocation.id, outcome='failed')
                 db.commit()
                 continue
             # This intentionally commits the synthetic effect independently of
