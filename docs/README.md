@@ -50,6 +50,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 42. [Phase 7 fixture gate and remaining limits](research/phase-7-fixture-gate.md)
 43. [Local backend egress denial](research/egress-denial-validation.md)
 44. [Bounded resolver and local TLS proof](research/transport-deadline-validation.md)
+45. [Exact single-use broker contract](research/broker-contract-validation.md)
 
 ## Architecture
 
