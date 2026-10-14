@@ -18,11 +18,11 @@ An additional threaded test pauses response retrieval after sending the local re
 | Duplicate/restart safety | Concurrent duplicate, simulated interruption and real process exit/fresh-interpreter replay; unknown never auto-retries |
 | Hostile content at an agent boundary | Fetched content reaches real worker GenerationRequest through a test-only seam; malicious fake output faces real gateway |
 | Build/migrations/Compose | Exact commands/results below; initial local bootstrap repair documented in `read-effect-validation.md` |
-| Independent product egress enforcement | **OPEN**: Compose default networking is not an outbound firewall; no deployed proxy/firewall boundary is configured or accepted here |
+| Independent product egress enforcement | **FOLLOW-UP 2026-10-15**: local deny-egress Compose isolation passed synthetic bypass checks; see [egress evidence](egress-denial-validation.md). A controlled outbound broker remains absent. |
 | Real resolver deadlines and TLS | **OPEN**: fake DNS and synthetic local HTTP do not establish bounded real resolution or a certificate handshake |
 | Product read dispatch | **DISABLED**: no read experiment API/outbox/worker route or automatic context consumption |
 
-The Phase 7 gate remains open. These fixture results do not authorize product outbound reads. The next slice must design and validate the independently enforced egress boundary in local isolation, including bypass denial, and bound the real resolver/TLS transport before any controlled outbound path can be considered. Paid/native activation and production integrations remain gated separately.
+The Phase 7 gate remains open. These fixture results do not authorize product outbound reads. Local deny-egress isolation was subsequently verified in Phase 7.4f. A controlled outbound broker and bounded resolver/TLS acceptance remain before any controlled outbound path can be considered. Paid/native activation and production integrations remain gated separately.
 
 ## Validation results
 

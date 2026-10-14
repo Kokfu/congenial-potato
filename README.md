@@ -4,7 +4,7 @@ A private, self-hosted foundation for persistent agents, projects, tasks and con
 
 ## Local Compose startup
 
-Requires Docker Compose. Create local secret files outside Git, then start:
+Requires Docker Engine 28+ with the Linux bridge driver and Docker Compose. Create local secret files outside Git, then start:
 
 ```sh
 mkdir -p .local
@@ -19,9 +19,10 @@ chmod 600 .local/db_password .local/initial_admin_password
 cp .env.example .env
 docker compose up --build -d
 curl -fsS http://localhost:8080/health/ready
+python scripts/egress_smoke.py
 ```
 
-Open `http://localhost:8080` and sign in as the provisioned owner. Only the web service binds the host, on loopback. The initial password file is read on first bootstrap; changing it later does not rotate the stored password. The Compose migration service runs once per startup before API and worker. The database and artifact directories use named volumes. Fixture runs create an artifact proposal; review its exact content in Approvals. The separate worker writes an immutable version only after approval. The Agents page can switch a stable agent between synthetic provider fixtures; the next execution uses a new immutable config revision.
+Open `http://localhost:8080` and sign in as the provisioned owner. Only the web service binds the host, on loopback. Database, migration, API and worker use an internal isolated bridge with no host gateway or external route. Web joins that bridge plus a separate ingress network and proxies only the fixed API. Verify the topology and synthetic bypass denials with `scripts/egress_smoke.py` after startup or network changes; older Docker engines and other networking drivers are unsupported. This is a deny-egress fixture configuration, with no outbound read broker or live model route. The initial password file is read on first bootstrap; changing it later does not rotate the stored password. The Compose migration service runs once per startup before API and worker. The database and artifact directories use named volumes. Fixture runs create an artifact proposal; review its exact content in Approvals. The separate worker writes an immutable version only after approval. The Agents page can switch a stable agent between synthetic provider fixtures; the next execution uses a new immutable config revision.
 
 ## Verify and restore
 

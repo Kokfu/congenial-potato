@@ -48,6 +48,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 40. [Staged exact web-read approval](research/read-approval-validation.md)
 41. [Mediated synthetic web-read effect](research/read-effect-validation.md)
 42. [Phase 7 fixture gate and remaining limits](research/phase-7-fixture-gate.md)
+43. [Local backend egress denial](research/egress-denial-validation.md)
 
 ## Architecture
 
@@ -71,4 +72,4 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 
 ## Current coding task
 
-Follow [progress.md](../progress.md) task by task. Phase 7.4d proves mediated web-read effects with injected synthetic transport and fake DNS; the complete Phase 7 gate and independent egress enforcement remain before any product outbound read. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.
+Follow [progress.md](../progress.md) task by task. Phase 7 fixtures prove mediated synthetic reads and local backend egress denial. Controlled egress and bounded resolver/TLS acceptance remain before any product outbound read. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.
