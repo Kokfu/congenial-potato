@@ -1,6 +1,6 @@
 # MVP plan
 
-Status: architecture approved; Phase 0, the foundation, and Phase 3–6 fixture gates are complete. Phase 7 bounded external read is next; native activation remains gated.
+Status: architecture approved; Phase 0, the foundation, and Phase 3–6 fixture gates are complete. Phase 7 local synthetic read acceptance is complete; product read/native activation remain gated. Phase 8 starts with an inert reviewed-runner fixture contract.
 
 ## Proof scenario
 
