@@ -1,6 +1,7 @@
 name: workforce
 services:
   db:
+    networks: [control]
     image: postgres:17.6
     environment:
       POSTGRES_DB: workforce
@@ -17,6 +18,9 @@ services:
       retries: 20
     restart: unless-stopped
   migrate:
+    networks: [control]
+    cap_drop: [NET_ADMIN, NET_RAW]
+    security_opt: [no-new-privileges:true]
     image: workforce-backend:phase1
     build:
       context: .
@@ -39,6 +43,9 @@ services:
       db: {condition: service_healthy}
     restart: 'no'
   api:
+    networks: [control]
+    cap_drop: [NET_ADMIN, NET_RAW]
+    security_opt: [no-new-privileges:true]
     image: workforce-backend:phase1
     build:
       context: .
@@ -57,6 +64,9 @@ services:
       retries: 20
     restart: unless-stopped
   worker:
+    networks: [control]
+    cap_drop: [NET_ADMIN, NET_RAW]
+    security_opt: [no-new-privileges:true]
     image: workforce-backend:phase1
     build:
       context: .
@@ -71,6 +81,7 @@ services:
       migrate: {condition: service_completed_successfully}
     restart: unless-stopped
   web:
+    networks: [control, edge]
     image: workforce-web:phase1
     environment:
       NO_PROXY: api,db,localhost,127.0.0.1
@@ -96,3 +107,15 @@ secrets:
 volumes:
   pgdata:
   artifacts:
+
+# Docker Engine 28+: isolated mode removes the host bridge gateway as well as
+# external routing. Older engines are unsupported; verify with egress_smoke.py.
+networks:
+  control:
+    internal: true
+    enable_ipv6: false
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
+  edge:
+    driver: bridge

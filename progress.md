@@ -1,6 +1,6 @@
 # Project progress
 
-Updated: 2026-10-14. This is the execution ledger for the approved AI workforce architecture. Work moves through these tasks in order; each task requires evidence before it is marked complete. Keep this file current as the product grows.
+Updated: 2026-10-15. This is the execution ledger for the approved AI workforce architecture. Work moves through these tasks in order; each task requires evidence before it is marked complete. Keep this file current as the product grows.
 
 ## Current position
 
@@ -124,7 +124,8 @@ Updated: 2026-10-14. This is the execution ledger for the approved AI workforce 
 - [x] **7.4c Staged exact web-read approval.** Promote a still-authorized proposal to an exact owner approval bound to destination grant ID/revision. Recheck grant, policy, source and root account at staging and grant/policy again at decision. An approved invocation remains `approved_staged`, outside worker effect dispatch. Evidence: `docs/research/read-approval-validation.md`.
 - [x] **7.4d Mediated web-read effect proof.** An injected local synthetic transport and fake DNS recheck exact approval, grant revision, policy, root budget and cancellation before/after the request. A committed attempt fences duplicate dispatch and restart; unknown outcomes never auto-retry. Persist cited `external_claim` provenance only after post-effect checks. No product worker dispatch or outbound read is enabled. Evidence: `docs/research/read-effect-validation.md`.
 - [x] **7.4e Agent/tool injection fixture.** A fetched hostile page reaches the actual worker through a test-only external-context seam. A deliberately compliant fake adapter cannot change grants or policy, bypass exact approval, read secrets or dispatch another read. In-flight cancellation and process-level crash/restart checks extend the effect proof. Evidence: `docs/research/phase-7-fixture-gate.md`.
-- [ ] **7.4 Phase 7 gate.** Deterministic synthetic SSRF, redirect, rebinding, scope, budget, provenance, injection, restart and cancellation coverage is recorded. Independent egress enforcement and bounded real resolver/TLS acceptance remain open before any product outbound read. See `docs/research/phase-7-fixture-gate.md`.
+- [x] **7.4f Local backend egress denial.** Place database, migration, API and worker on a Docker 28+ internal isolated bridge, with no host gateway, default route or IPv6 interface. Keep only web on an ingress network. A reachable synthetic sink stayed unreachable from API/worker through direct sockets, HTTP, proxy settings or the web reverse proxy. Fixture smoke remained healthy. This denies outbound use; it does not introduce a controlled read broker. Evidence: `docs/research/egress-denial-validation.md`.
+- [ ] **7.4 Phase 7 gate.** Deterministic synthetic SSRF, redirect, rebinding, scope, budget, provenance, injection, restart and cancellation coverage is recorded. Local backend egress denial is verified; a controlled egress broker and bounded real resolver/TLS acceptance remain open before any product outbound read. See `docs/research/phase-7-fixture-gate.md`.
 
 ## Working rules and evidence
 
