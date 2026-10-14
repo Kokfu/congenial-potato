@@ -21,7 +21,7 @@ pytestmark=pytest.mark.skipif(os.environ.get('WORKFORCE_DOCKER_GATE')!='1',
 
 
 @pytest.mark.parametrize('client_service,mode',[
-    ('api','success'),('worker','success'),('api','crash'),('worker','grant_before'),
+    ('api','success'),('worker','success'),('api','crash'),('api','cold_journal'),('worker','grant_before'),
     ('api','cancel_inflight'),('api','rebind'),('worker','redirect'),('worker','hostile'),
 ])
 def test_separate_broker_mediates_without_backend_bypass(authenticated,certificate,client_service,mode,monkeypatch):
@@ -37,7 +37,7 @@ def test_separate_broker_mediates_without_backend_bypass(authenticated,certifica
     image=details(service('api'))['Image']
     with isolated(image,cert.read_text(),(cert.parent/'key.pem').read_text(),key,
             pause=mode=='cancel_inflight',dns='169.254.169.254' if mode=='rebind' else '8.8.8.8',
-            crash=mode=='crash',body=body) as fixture:
+            crash=mode in ('crash','cold_journal'),body=body) as fixture:
         fixture.bypass_checks()
         capability,prepared=begin(invocation_id)
         envelope=issue(invocation_id,capability,prepared,key)
@@ -65,12 +65,19 @@ def test_separate_broker_mediates_without_backend_bypass(authenticated,certifica
             assert status==('succeeded' if mode in ('success','hostile') else 'discarded')
         else:
             assert response=={'state':'denied' if mode=='grant_before' else 'unknown'}
-        if mode=='crash':
+        if mode in ('crash','cold_journal'):
             fixture.broker_process.wait(timeout=5)
             assert details(fixture.broker)['State']['ExitCode']==73
-            fixture.restart_broker()
+            fixture.restart_broker(replace_journal=mode=='cold_journal')
         replay=fixture.client('worker' if client_service=='api' else 'api',envelope)
-        assert json.loads(line(replay))=={'state':'unknown'}
+        replay_response=json.loads(line(replay))
+        if mode=='cold_journal':
+            assert replay_response=={'authorize':True}
+            with pytest.raises(BrokerOutcomeUnknown):
+                authorize_broker_fetch(envelope,key=key,experiment_enabled=True)
+            replay.stdin.write('unknown\n'); replay.stdin.flush()
+            replay_response=json.loads(line(replay))
+        assert replay_response=={'state':'unknown'}
         replay.communicate(timeout=5)
         assert replay.returncode==0
         fixture.assert_marker(invocation_id)
