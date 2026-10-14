@@ -20,11 +20,11 @@ from test_network_policy import answers
 from test_tool_gateway import fixture_run, headers
 
 
-def approved_read(client, path='/source', max_bytes=64):
+def approved_read(client, path='/source', max_bytes=64, timeout_seconds=1):
     output = json.dumps({'version': 1, 'action': 'project.web.read',
         'arguments': {'project_id': 'PROJECT_ID',
                       'url': f'https://example.test{path}',
-                      'max_bytes': max_bytes, 'timeout_seconds': 1}})
+                      'max_bytes': max_bytes, 'timeout_seconds': timeout_seconds}})
     project, _, execution_id = fixture_run(client, output, web_grant=True)
     row = client.get('/api/tool-invocations', params={'project_id': project['id']}).json()[0]
     staged = client.post(f"/api/tool-invocations/{row['id']}/stage-web-read-approval",

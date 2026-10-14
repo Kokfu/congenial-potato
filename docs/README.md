@@ -54,6 +54,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 46. [Database-bound broker issuance](research/broker-issuer-validation.md)
 47. [Authenticated broker results](research/broker-result-validation.md)
 48. [Private broker RPC](research/broker-rpc-validation.md)
+49. [Separate-container broker proof](research/isolated-broker-validation.md)
 
 ## Architecture
 
@@ -77,4 +78,4 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 
 ## Current coding task
 
-Follow [progress.md](../progress.md) task by task. Phase 7 fixtures prove mediated synthetic reads and local backend egress denial. Bounded resolver and local TLS checks also pass; controlled egress mediation and its end-to-end isolation proof remain before any product outbound read. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.
+Follow [progress.md](../progress.md) task by task. Phase 7 fixtures prove mediated synthetic reads and local backend egress denial. Private broker RPC and separate-container TLS mediation/bypass checks also pass. Independent mediator admission and lifecycle checks remain before any product outbound read. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.
