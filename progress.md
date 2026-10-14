@@ -10,7 +10,7 @@ Updated: 2026-10-15. This is the execution ledger for the approved AI workforce 
 
 - [x] Phase 3–6 fixture gates are complete.
 - [x] Phase 7 local synthetic acceptance is complete: the final Docker-enabled suite passed 351 tests, followed by fresh-volume startup proof. Product outbound-read activation remains closed.
-- [ ] Phase 8 fixture work starts with the inert reviewed-runner contract; arbitrary shell/browser, real writes and product runner dispatch remain disabled.
+- [ ] Phase 8 inert reviewed-runner contract is complete; the isolated local fixture is next; arbitrary shell/browser, real writes and product runner dispatch remain disabled.
 
 ## Phase 1 tasks
 
@@ -142,8 +142,9 @@ Updated: 2026-10-15. This is the execution ledger for the approved AI workforce 
 
 ## Phase 8 fixture tasks
 
-- [ ] **8.1 Inert reviewed-runner contract.** Define one fixed synthetic job/profile with bounded canonical input, exact scope/attempt/expiry and manifest digest. Reject model-selected commands, images, environment, paths, mounts, network and credentials. No launch, Docker socket or product dispatch is added.
-- [ ] **8.2 Isolated local runner proof.** Use the reviewed fixed job in a non-root/read-only/no-network container with capability/CPU/memory/PID/time/output limits. Persist before launch, test cancellation and unknown restart outcomes, and keep execution outside product dispatch. Synthetic external-write receipts/reconciliation follow in another slice; no real write integration or arbitrary shell/browser is authorized.
+- [x] **8.1 Inert reviewed-runner contract.** Define one fixed synthetic job/profile with bounded canonical input, exact scope/attempt/expiry and manifest digest. Reject model-selected commands, images, environment, paths, mounts, network and credentials. No launch, Docker socket or product dispatch is added. The 57 focused contract tests, Alembic metadata check, backend image build, non-root contract probe and fresh isolated Compose fixture/egress smoke passed. Evidence: `docs/research/reviewed-runner-contract-validation.md`.
+- [ ] **8.2a OS-isolated local runner fixture.** Bind actual reviewed fixed job code and an immutable image identity before launch. Prove non-root/read-only/no-network operation and capability/CPU/memory/PID/time/output bounds; persist a private fixture attempt before launch, test cancellation/restart uncertainty, and keep execution outside product dispatch. This alone establishes no database authorization.
+- [ ] **8.2b Governed runner attempts.** Bind the isolated job to committed exact approvals/policy/scope, current grants/root budget/cancellation and independent database admission. Recheck authority before accepting a result; do not retry unknown outcomes or infer external truth from lost receipts. Synthetic external-write receipts/reconciliation follow in another slice; no real write integration or arbitrary shell/browser is authorized.
 
 ## Working rules and evidence
 
