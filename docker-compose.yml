@@ -2,7 +2,10 @@ name: workforce
 services:
   db:
     networks: [control]
-    image: postgres:17.6
+    image: workforce-postgres:phase1
+    build:
+      context: .
+      dockerfile: docker/postgres.Dockerfile
     environment:
       POSTGRES_DB: workforce
       POSTGRES_USER: postgres
@@ -10,7 +13,6 @@ services:
     secrets: [db_password]
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./docker/init-db.sh:/docker-entrypoint-initdb.d/01-workflow-db.sh:ro
     healthcheck:
       test: [CMD-SHELL, 'pg_isready -U postgres -d workforce']
       interval: 5s

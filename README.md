@@ -50,3 +50,5 @@ A full disposable Compose restore was tested on a separate loopback port: owner 
 ## Development checks
 
 Use PostgreSQL test databases and synthetic secrets. Apply migrations with `cd backend && APP_DATABASE_URL=... alembic -c alembic.ini upgrade head`. Run `PYTHONPATH=backend/src APP_DATABASE_URL=... INITIAL_ADMIN_PASSWORD_FILE=... pytest backend/tests` against a database named `workforce_test`. Build the UI with `cd frontend && npm ci && npm run build`. With the private Compose stack running, `python scripts/smoke.py` and `python scripts/provider_switch_smoke.py` exercise the fixture execution and provider switch. No paid provider or external tool is configured.
+
+After building the Compose images, `python scripts/clean_compose_smoke.py` checks startup with fresh database/artifact volumes, synthetic private secrets and a temporary loopback port. It verifies both databases, non-root processes, fixture execution and egress denial, then removes only its own temporary project's resources. It requires the backend Python dependencies and leaves the regular Compose project intact. See [clean bootstrap evidence](docs/research/clean-bootstrap-validation.md).
