@@ -493,3 +493,22 @@ class ModelCall(Base):
     usage: Mapped[dict] = mapped_column(JSON, default=dict)
     result: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ReadEffectAttempt(Base):
+    __tablename__ = 'read_effect_attempts'
+    __table_args__ = (
+        CheckConstraint("status IN ('unknown', 'succeeded', 'discarded')",
+                        name='ck_read_attempt_status'),
+        CheckConstraint("(status = 'succeeded') = (observation_id IS NOT NULL)",
+                        name='ck_read_attempt_observation'),
+    )
+    invocation_id: Mapped[str] = mapped_column(ForeignKey('tool_invocations.id'), primary_key=True)
+    approval_id: Mapped[str] = mapped_column(ForeignKey('approvals.id'))
+    payload_hash: Mapped[str] = mapped_column(String(64))
+    agent_id: Mapped[str] = mapped_column(ForeignKey('agents.id'))
+    root_id: Mapped[str] = mapped_column(ForeignKey('executions.id'))
+    status: Mapped[str] = mapped_column(String(30))
+    reason: Mapped[str | None] = mapped_column(String(120))
+    observation_id: Mapped[str | None] = mapped_column(ForeignKey('external_read_observations.id'), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

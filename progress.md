@@ -1,6 +1,6 @@
 # Project progress
 
-Updated: 2026-10-08. This is the execution ledger for the approved AI workforce architecture. Work moves through these tasks in order; each task requires evidence before it is marked complete. Keep this file current as the product grows.
+Updated: 2026-10-14. This is the execution ledger for the approved AI workforce architecture. Work moves through these tasks in order; each task requires evidence before it is marked complete. Keep this file current as the product grows.
 
 ## Current position
 
@@ -122,7 +122,7 @@ Updated: 2026-10-08. This is the execution ledger for the approved AI workforce 
 - [x] **7.4a Exact destination grant persistence.** Persist an owner-authored project/agent/HTTPS-host grant with expiry, revision and revocation. Check the project execution grant at lookup, and reuse one pure URL validator in the network experiment. No product outbound tool is registered. Evidence: `docs/research/read-grant-validation.md`.
 - [x] **7.4b Inert typed web-read proposals.** Validate bounded HTTPS arguments and canonical exact origin; apply project/agent tool policy and the persistent destination grant before recording a proposal. Keep status `proposed`, with no approval or effect route. Cancellation invalidates it. Evidence: `docs/research/read-proposal-validation.md`.
 - [x] **7.4c Staged exact web-read approval.** Promote a still-authorized proposal to an exact owner approval bound to destination grant ID/revision. Recheck grant, policy, source and root account at staging and grant/policy again at decision. An approved invocation remains `approved_staged`, outside worker effect dispatch. Evidence: `docs/research/read-approval-validation.md`.
-- [ ] **7.4d Mediated web-read effect.** Recheck exact approval, destination grant, budget and cancellation immediately before a bounded isolated synthetic effect. Persist cited provenance and reconcile unknown outcomes. Keep real network egress disabled until the gate clears.
+- [x] **7.4d Mediated web-read effect proof.** An injected local synthetic transport and fake DNS recheck exact approval, grant revision, policy, root budget and cancellation before/after the request. A committed attempt fences duplicate dispatch and restart; unknown outcomes never auto-retry. Persist cited `external_claim` provenance only after post-effect checks. No product worker dispatch or outbound read is enabled. Evidence: `docs/research/read-effect-validation.md`.
 - [ ] **7.4 Phase 7 gate.** Run deterministic SSRF, redirect, rebinding, scope, budget, provenance, restart and cancellation tests; build and smoke Compose before enabling any controlled outbound read.
 
 ## Working rules and evidence
