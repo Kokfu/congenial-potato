@@ -9,7 +9,7 @@ COPY frontend/ ./
 RUN npm run build
 FROM caddy:2.10.2-alpine
 ENV XDG_DATA_HOME=/tmp/caddy-data XDG_CONFIG_HOME=/tmp/caddy-config
-COPY docker/Caddyfile /etc/caddy/Caddyfile
+COPY --chown=10001:10001 docker/Caddyfile /etc/caddy/Caddyfile
 COPY --from=builder /app/dist /srv
 USER 10001:10001
 EXPOSE 8080

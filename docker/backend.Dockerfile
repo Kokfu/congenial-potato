@@ -9,7 +9,7 @@ FROM python:3.12.12-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONPATH=/app/backend/src
 WORKDIR /app/backend
 COPY --from=builder /install /usr/local
-COPY backend /app/backend
+COPY --chown=10001:10001 backend /app/backend
 RUN groupadd -g 10001 workforce && useradd -u 10001 -g workforce -M -s /usr/sbin/nologin workforce && mkdir -p /var/lib/workforce/artifacts && chown -R workforce:workforce /var/lib/workforce
 ENTRYPOINT ["python", "-m", "workforce.entrypoint"]
 CMD ["uvicorn", "workforce.main:app", "--host", "0.0.0.0", "--port", "8000"]

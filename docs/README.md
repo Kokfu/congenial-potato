@@ -46,6 +46,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 38. [Persistent read destination grants](research/read-grant-validation.md)
 39. [Inert web-read proposals](research/read-proposal-validation.md)
 40. [Staged exact web-read approval](research/read-approval-validation.md)
+41. [Mediated synthetic web-read effect](research/read-effect-validation.md)
 
 ## Architecture
 
@@ -69,4 +70,4 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 
 ## Current coding task
 
-Follow [progress.md](../progress.md) task by task. Phase 7.4c stages exact web-read approvals without dispatching effects; mediated execution and the complete gateway gate remain before any product outbound read. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.
+Follow [progress.md](../progress.md) task by task. Phase 7.4d proves mediated web-read effects with injected synthetic transport and fake DNS; the complete Phase 7 gate and independent egress enforcement remain before any product outbound read. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.
