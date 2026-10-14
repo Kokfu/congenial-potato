@@ -52,6 +52,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 44. [Bounded resolver and local TLS proof](research/transport-deadline-validation.md)
 45. [Exact single-use broker contract](research/broker-contract-validation.md)
 46. [Database-bound broker issuance](research/broker-issuer-validation.md)
+47. [Authenticated broker results](research/broker-result-validation.md)
 
 ## Architecture
 
