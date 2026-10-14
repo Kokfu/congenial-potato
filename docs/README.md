@@ -47,6 +47,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 39. [Inert web-read proposals](research/read-proposal-validation.md)
 40. [Staged exact web-read approval](research/read-approval-validation.md)
 41. [Mediated synthetic web-read effect](research/read-effect-validation.md)
+42. [Phase 7 fixture gate and remaining limits](research/phase-7-fixture-gate.md)
 
 ## Architecture
 

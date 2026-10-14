@@ -12,7 +12,7 @@ from workforce.local_read_experiment import (LocalReadGrant, ReadDenied,
 
 
 @contextmanager
-def local_server():
+def local_server(content=b'A synthetic source claim'):
     seen: list[str] = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -25,7 +25,7 @@ def local_server():
                 return
             if self.path == '/slow':
                 time.sleep(.2)
-            body = b'A synthetic source claim'
+            body = content
             if self.path == '/big':
                 body = b'x' * 100
             self.send_response(200)
