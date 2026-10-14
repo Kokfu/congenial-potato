@@ -2,6 +2,8 @@
 
 Date: 2026-10-14. Branch: `phase-7-fixture-gate`. Parent: mediated-effect draft PR #41.
 
+Current status (2026-10-15): the [consolidated synthetic acceptance](phase-7-acceptance.md) records the final 351-case Docker-enabled run and later clean-volume startup proof. Product outbound-read activation remains closed. The original injection results below are retained as historical slice evidence.
+
 The isolated read proof now feeds a synthetic hostile page into a deliberately compliant fake adapter through the real worker request boundary. A **test-only** context seam selects the exact persisted observation and wraps its URL, digest, `external_claim` label and text as quoted data. The worker places it in a user message with external trust; the human system instruction stays separate. The adapter intentionally follows the page's requested action and emits it through the normal structured response, execution completion and tool gateway. There is no production observation-to-context connection and no claim that a model detects or resists the injection.
 
 Seven deterministic attacks request an ungranted exfiltration host, another project's scope, a secret-reading tool, a grant-changing tool, an injected approval field, an artifact write, or another read at the granted host. The gateway rejects invalid/cross-project/unknown actions; the foreign destination is denied; the write remains pending owner approval; and the same-host read remains an inert proposal. No artifact, synthetic tool effect or second read attempt is created. Original grants, policy revisions and approvals remain unchanged. The canary is synthetic text, not a credential. One generated model call is persisted and repeated DBOS result retrieval performs no new generation.
@@ -23,7 +25,7 @@ An additional threaded test pauses response retrieval after sending the local re
 | Single-use broker authority and replies | **FOLLOW-UP 2026-10-15**: [contract](broker-contract-validation.md), [database issuer](broker-issuer-validation.md) and [authenticated results](broker-result-validation.md) have fixture evidence. The [private RPC](broker-rpc-validation.md) and focused [separate-container proof](isolated-broker-validation.md) subsequently passed; the earlier full suite passed 343 tests. [Independent mediator admission](broker-admission-validation.md) now adds a database fence and cold-journal replacement evidence; the final Docker-enabled full suite passed 351 tests. |
 | Product read dispatch | **DISABLED**: no read experiment API/outbox/worker route or automatic context consumption |
 
-The Phase 7 gate remains open. These fixture results do not authorize product outbound reads. Local deny-egress isolation was subsequently verified in Phase 7.4f. Bounded resolver lifecycle and local TLS acceptance subsequently passed in Phase 7.4g. A controlled outbound broker and its end-to-end isolation proof remain before any product outbound path can be considered. Paid/native activation and production integrations remain gated separately.
+The Phase 7 product activation gate remains open. These fixture results do not authorize product outbound reads. Later slices verified local deny-egress isolation, bounded resolver/TLS lifecycle, separate-container broker mediation and independent database admission. Production key/transport/recovery policy and a deployed product boundary remain unverified; see the consolidated acceptance above. Paid/native activation and production integrations remain gated separately.
 
 ## Validation results
 
