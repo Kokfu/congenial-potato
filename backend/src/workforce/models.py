@@ -506,6 +506,8 @@ class ReadEffectAttempt(Base):
                         name='ck_read_attempt_broker_issue'),
         CheckConstraint('broker_ticket_hash IS NULL OR broker_capability_hash IS NOT NULL',
                         name='ck_read_attempt_broker_capability'),
+        CheckConstraint('NOT broker_permit_consumed OR broker_ticket_hash IS NOT NULL',
+                        name='ck_read_attempt_broker_admission'),
     )
     invocation_id: Mapped[str] = mapped_column(ForeignKey('tool_invocations.id'), primary_key=True)
     approval_id: Mapped[str] = mapped_column(ForeignKey('approvals.id'))
@@ -518,4 +520,5 @@ class ReadEffectAttempt(Base):
     broker_capability_hash: Mapped[str | None] = mapped_column(String(64))
     broker_ticket_hash: Mapped[str | None] = mapped_column(String(64))
     broker_issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    broker_permit_consumed: Mapped[bool] = mapped_column(Boolean, default=False, server_default='false')
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

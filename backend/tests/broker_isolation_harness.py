@@ -100,8 +100,9 @@ assert os.getuid()==10001
 cfg=json.loads(sys.stdin.readline())
 def authorize(envelope):
     print(json.dumps({'authorize':True}),flush=True)
-    if sys.stdin.readline().strip()!='allow':
-        raise ReadDenied('fixture mediator refused')
+    decision=sys.stdin.readline().strip()
+    if decision=='unknown': raise BrokerOutcomeUnknown('fixture admission already consumed')
+    if decision!='allow': raise ReadDenied('fixture mediator refused')
 try:
     signed=broker_exchange((cfg['broker'],8091),cfg['ticket'],key=bytes.fromhex(cfg['key']),
         authorize=authorize,experiment_enabled=True)
@@ -146,7 +147,7 @@ class Isolation:
         self.link,self.source,self.volume=(self.prefix+s for s in ('-link','-origin-net','-journal'))
         self.origin,self.broker=self.prefix+'-origin',self.prefix+'-broker'
         self.created_networks=[]; self.containers=[]; self.attached=[]; self.processes=[]
-        self.volume_created=False
+        self.volumes=[]
         self.services={name:service(name) for name in ('api','worker','db')}
         self.before={name:set(details(cid)['NetworkSettings']['Networks']) for name,cid in self.services.items()}
         assert len(self.before['api'])==len(self.before['worker'])==1
@@ -184,10 +185,7 @@ class Isolation:
         for name in (self.link,self.source):
             docker('network','create','--internal','--opt','com.docker.network.bridge.gateway_mode_ipv4=isolated',name)
             self.created_networks.append(name)
-        docker('volume','create',self.volume); self.volume_created=True
-        docker('run','--rm','--network','none','--mount',f'type=volume,source={self.volume},target=/journal',
-            '--entrypoint','python',self.image,'-c',
-            "import os; os.chown('/journal',10001,10001); os.chmod('/journal',0o700)")
+        self.initialize_journal(self.volume)
         self._create(self.origin,self.source,ORIGIN)
         self._start(self.origin,ORIGIN,{'cert':self.cert,'key':self.key,'pause':self.pause,'body':self.body})
         self.origin_ip=details(self.origin)['NetworkSettings']['Networks'][self.source]['IPAddress']
@@ -198,17 +196,27 @@ class Isolation:
         self.start_broker()
         self.check_networks()
 
+    def initialize_journal(self,volume):
+        docker('volume','create',volume)
+        self.volumes.append(volume)
+        docker('run','--rm','--network','none','--mount',f'type=volume,source={volume},target=/journal',
+            '--entrypoint','python',self.image,'-c',
+            "import os; os.chown('/journal',10001,10001); os.chmod('/journal',0o700)")
+
     def start_broker(self):
         self._create(self.broker,self.link,BROKER,volume=True)
         docker('network','connect',self.source,self.broker)
         self.broker_process=self._start(self.broker,BROKER,{'cert':self.cert,'key':self.signing_key.hex(),
             'origin':self.origin_ip,'dns':self.dns,'crash':self.crash})
 
-    def restart_broker(self):
+    def restart_broker(self,*,replace_journal=False):
         docker('rm','-f',self.broker)
         self.containers.remove(self.broker)
         self.broker_process.communicate(timeout=5)
         self.crash=False
+        if replace_journal:
+            self.volume=self.prefix+'-replacement-journal'
+            self.initialize_journal(self.volume)
         self.start_broker()
         self.check_networks()
 
@@ -223,7 +231,8 @@ class Isolation:
         assert info['Config']['User']=='10001:10001' and info['HostConfig']['ReadonlyRootfs']
         assert {v.removeprefix('CAP_') for v in info['HostConfig']['CapDrop']}=={'ALL'}
         assert {m['Destination'] for m in info['Mounts']} <= {'/journal','/tmp'}
-        assert any(m['Destination']=='/journal' and m['Type']=='volume' for m in info['Mounts'])
+        assert any(m['Destination']=='/journal' and m['Type']=='volume' and m['Name']==self.volume
+                   for m in info['Mounts'])
         assert set(details(self.origin)['NetworkSettings']['Networks'])=={self.source}
         db_ip=details(self.services['db'])['NetworkSettings']['Networks'][self.control]['IPAddress']
         check='''
@@ -286,7 +295,7 @@ print('private_digest_fence=passed')
         for name in self.attached[::-1]:
             docker('network','disconnect','-f',self.link,self.services[name],check=False)
         for name in self.created_networks[::-1]: docker('network','rm',name,check=False)
-        if self.volume_created: docker('volume','rm',self.volume,check=False)
+        for volume in self.volumes[::-1]: docker('volume','rm',volume,check=False)
         for name,cid in self.services.items():
             assert set(details(cid)['NetworkSettings']['Networks'])==self.before[name], 'topology not restored'
 

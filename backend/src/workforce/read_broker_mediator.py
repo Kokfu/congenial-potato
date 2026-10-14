@@ -3,8 +3,9 @@ from sqlalchemy import select
 
 from .db import session_factory
 from .local_read_experiment import ReadDenied
-from .models import ExternalReadObservation, ReadEffectAttempt
-from .read_broker_contract import verify_ticket
+from .activity import record_activity
+from .models import AuditEvent, ExternalReadObservation, ReadEffectAttempt
+from .read_broker_contract import BrokerOutcomeUnknown, verify_ticket
 from .read_broker_result import ticket_digest, verify_broker_reply
 from .read_effect_experiment import _locked, _reason, _deny, _event
 from .read_observations import store_observation
@@ -40,12 +41,22 @@ def authorize_broker_fetch(envelope: str, *, key: bytes,
         attempt = _attempt(db, invocation.id, envelope, ticket)
         if attempt.status != 'unknown':
             raise ReadDenied('Broker attempt is no longer open')
+        if attempt.broker_permit_consumed:
+            raise BrokerOutcomeUnknown('Broker admission already consumed; no repeat permit')
+        ticket.current()
         reason = _authority(db, invocation, source, root, approval, attempt)
         if reason:
             _deny(db, invocation, approval, attempt, reason)
             db.commit()
             raise ReadDenied('Broker fetch authority unavailable')
-        db.commit()  # release locks before DNS/socket work; cancellation may commit
+        ticket.current()
+        attempt.broker_permit_consumed = True
+        db.add(AuditEvent(actor='broker-mediator-experiment', action='read.broker.admit',
+            resource=invocation.id, outcome='unknown',
+            detail={'ticket_hash': attempt.broker_ticket_hash}))
+        record_activity(db, project_id=invocation.project_id, actor='broker-mediator-experiment',
+            action='read.broker.admit', resource=invocation.id, outcome='unknown')
+        db.commit()  # durable before permit; release locks before DNS/socket work
 
 
 def accept_broker_reply(envelope: str, signed: str, *, key: bytes,
@@ -58,6 +69,8 @@ def accept_broker_reply(envelope: str, signed: str, *, key: bytes,
         invocation, source, root, approval = _locked(db, str(ticket.attempt_id))
         attempt = _attempt(db, invocation.id, envelope, ticket)
         ticket.current()  # verification may have waited behind the root lock
+        if not attempt.broker_permit_consumed:
+            raise ReadDenied('Broker admission is unconfirmed')
         if attempt.status == 'succeeded':
             # A replay can acknowledge the same immutable historical result,
             # but cannot replace it or create another observation/audit event.
