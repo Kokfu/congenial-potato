@@ -12,6 +12,8 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .bounded_resolver import resolve_with_deadline
+from .deadline_socket import DeadlineSocket, remaining
 from .local_read_experiment import (ReadDenied, ReadRequest, ReadResult,
                                     bounded_text_response)
 
@@ -88,7 +90,7 @@ def canonical_public_url(value: str) -> tuple[str, int]:
 
 
 def prepare_public_destination(request: ReadRequest, grant: PublicReadGrant,
-                               *, resolver: Resolver = socket.getaddrinfo) -> PinnedDestination:
+                               *, resolver: Resolver | None = None) -> PinnedDestination:
     """Require an exact HTTPS grant and reject mixed public/private DNS answers."""
     if (grant.project_id != request.project_id or grant.agent_id != request.agent_id or
             grant.expires_at.tzinfo is None or
@@ -97,13 +99,17 @@ def prepare_public_destination(request: ReadRequest, grant: PublicReadGrant,
     host, port = canonical_public_url(request.url)
     if host != grant.host or port != grant.port:
         raise ReadDenied('Destination outside exact HTTPS grant')
+    if resolver is None:
+        def resolver(host, port, *, type):
+            return resolve_with_deadline(host, port, type=type,
+                                         timeout_seconds=request.timeout_seconds)
     return PinnedDestination(host=host, port=port,
                              addresses=_public_addresses(host, port, resolver))
 
 
 def revalidate_public_destination(request: ReadRequest, grant: PublicReadGrant,
                                   prepared: PinnedDestination, *,
-                                  resolver: Resolver = socket.getaddrinfo) -> str:
+                                  resolver: Resolver | None = None) -> str:
     """Re-resolve immediately before effect; any changed answer fails closed."""
     current = prepare_public_destination(request, grant, resolver=resolver)
     if current != prepared:
@@ -117,9 +123,11 @@ class PinnedHTTPConnection(HTTPConnection):
         super().__init__(host, port, timeout=timeout)
         self.pinned_ip = str(ipaddress.ip_address(pinned_ip))
         self.socket_factory = socket_factory
+        self.deadline = time.monotonic() + timeout
 
-    def connect(self):
-        sock = self.socket_factory((self.pinned_ip, self.port), self.timeout)
+    def _open_socket(self):
+        sock = self.socket_factory((self.pinned_ip, self.port),
+                                   remaining(self.deadline))
         try:
             peer = str(ipaddress.ip_address(sock.getpeername()[0]))
             if peer != self.pinned_ip:
@@ -127,7 +135,10 @@ class PinnedHTTPConnection(HTTPConnection):
         except Exception:
             sock.close()
             raise
-        self.sock = sock
+        return sock
+
+    def connect(self):
+        self.sock = DeadlineSocket(self._open_socket(), self.deadline)
 
 
 class PinnedHTTPSConnection(PinnedHTTPConnection):
@@ -139,36 +150,40 @@ class PinnedHTTPSConnection(PinnedHTTPConnection):
         self.context = context or ssl.create_default_context()
 
     def connect(self):
-        super().connect()
+        sock = self._open_socket()
         try:
-            self.sock = self.context.wrap_socket(self.sock, server_hostname=self.host)
+            sock.settimeout(remaining(self.deadline))
+            tls = self.context.wrap_socket(sock, server_hostname=self.host)
+            self.sock = DeadlineSocket(tls, self.deadline)
         except Exception:
-            self.sock.close()
+            sock.close()
             raise
 
 
 def execute_public_read_experiment(request: ReadRequest, grant: PublicReadGrant,
                                    prepared: PinnedDestination, *,
                                    experiment_enabled: bool = False,
-                                   resolver: Resolver = socket.getaddrinfo,
+                                   resolver: Resolver | None = None,
                                    connection_factory=None) -> ReadResult:
     """Revalidate then make one pinned HTTPS GET; product registration is absent."""
     if not experiment_enabled:
         raise ReadDenied('Public read experiment is disabled')
+    deadline = time.monotonic() + request.timeout_seconds
     ip = revalidate_public_destination(request, grant, prepared,
                                        resolver=resolver)
+    if time.monotonic() >= deadline:
+        raise ReadDenied('Read deadline exceeded before connection')
     factory = connection_factory or PinnedHTTPSConnection
     connection = factory(prepared.host, prepared.port, ip,
-                         timeout=request.timeout_seconds)
+                         timeout=remaining(deadline))
     url = urlsplit(request.url)
     path = url.path + (f'?{url.query}' if url.query else '')
-    deadline = time.monotonic() + request.timeout_seconds
     try:
         connection.request('GET', path, headers={
             'Accept': 'text/plain, text/html', 'Accept-Encoding': 'identity',
             'User-Agent': 'workforce-read-experiment/1'})
-        return bounded_text_response(connection.getresponse(), connection,
-                                     request, deadline)
+        with connection.getresponse() as response:
+            return bounded_text_response(response, connection, request, deadline)
     except (OSError, HTTPException) as exc:
         raise ReadDenied('Pinned read connection failed') from exc
     finally:
