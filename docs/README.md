@@ -56,6 +56,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 48. [Private broker RPC](research/broker-rpc-validation.md)
 49. [Separate-container broker proof](research/isolated-broker-validation.md)
 50. [Independent mediator admission](research/broker-admission-validation.md)
+51. [Clean isolated Compose bootstrap](research/clean-bootstrap-validation.md)
 
 ## Architecture
 
@@ -79,4 +80,4 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 
 ## Current coding task
 
-Follow [progress.md](../progress.md) task by task. Phase 7 fixtures prove mediated synthetic reads and local backend egress denial. Private broker RPC and separate-container TLS mediation/bypass checks also pass. Independent mediator admission now survives an empty replacement journal, with 351 Docker-enabled backend tests passing. Clean bootstrap and product key/transport/restore lifecycle checks remain before any product outbound read. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.
+Follow [progress.md](../progress.md) task by task. Phase 7 fixtures prove mediated synthetic reads and local backend egress denial. Private broker RPC and separate-container TLS mediation/bypass checks also pass. Independent mediator admission now survives an empty replacement journal, with 351 Docker-enabled backend tests passing. Fresh isolated Compose startup now passes without manual database repair. Product key/transport/restore lifecycle checks remain before any product outbound read. The Phase 2 live activation gate remains open; keep paid calls and production credentials disabled during fixture validation.

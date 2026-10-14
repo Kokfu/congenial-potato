@@ -1,11 +1,22 @@
 """Synthetic end-to-end check for the private Compose foundation."""
+import argparse
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 import httpx
 
-base = 'http://localhost:8080'
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--base-url', default='http://localhost:8080')
+parser.add_argument('--password-file', type=Path, default=Path('.local/initial_admin_password'))
+args = parser.parse_args()
+base = args.base_url.rstrip('/')
+target = urlsplit(base)
+if (target.scheme != 'http' or target.hostname not in ('localhost', '127.0.0.1', '::1')
+        or target.username is not None or target.password is not None
+        or target.path or target.query or target.fragment):
+    parser.error('Smoke requires an HTTP loopback origin')
 origin = {'Origin': base}
-password = Path('.local/initial_admin_password').read_text().rstrip('\n')
+password = args.password_file.read_text().rstrip('\n')
 with httpx.Client(base_url=base, trust_env=False, timeout=5) as c:
     assert c.get('/health/ready').json() == {'status': 'ready'}
     assert c.get('/api/projects').status_code == 401
