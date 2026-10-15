@@ -61,6 +61,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 53. [Inert reviewed-runner contract](research/reviewed-runner-contract-validation.md)
 54. [OS-isolated local runner fixture](research/isolated-runner-validation.md)
 55. [Inert owner-pinned runner grants](research/runner-grant-validation.md)
+56. [Inert typed runner proposals](research/runner-proposal-validation.md)
 
 ## Architecture
 
@@ -84,4 +85,4 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 
 ## Current coding task
 
-Follow [progress.md](../progress.md) task by task. Phase 7 local synthetic acceptance and the Phase 8 OS-isolated fixed-job fixture are complete; the latest Docker-enabled backend run passed 456 tests and fresh-volume Compose smoke passed. Product reads, runner dispatch and Phase 2 native activation remain closed. Owner-pinned runner grants are persisted as inert metadata. Next add typed proposals before exact approvals and governed attempts. Keep arbitrary shell/browser execution, paid calls, real outbound effects and production credentials disabled.
+Follow [progress.md](../progress.md) task by task. Phase 7 local synthetic acceptance and the Phase 8 OS-isolated fixed-job fixture are complete; the latest Docker-enabled backend run passed 456 tests and fresh-volume Compose smoke passed. Product reads, runner dispatch and Phase 2 native activation remain closed. Owner-pinned runner grants are persisted as inert metadata. Typed fixed-job proposals now remain inert in owner review. Next add exact staged approvals before governed attempts. Keep arbitrary shell/browser execution, paid calls, real outbound effects and production credentials disabled.

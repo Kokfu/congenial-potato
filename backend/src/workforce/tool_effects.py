@@ -77,6 +77,9 @@ def apply_admitted_tools(after_ledger_commit: Callable[[], None] | None = None) 
                 .execution_options(populate_existing=True)).scalar_one()
             if invocation.status != 'admitted':
                 continue
+            if invocation.action == 'project.runner.digest':
+                # Inert proposals cannot enter the product effect dispatcher.
+                continue
             existing = db.get(SyntheticToolEffect, invocation.id)
             if existing is not None:
                 _finish_from_ledger(db, invocation, existing)

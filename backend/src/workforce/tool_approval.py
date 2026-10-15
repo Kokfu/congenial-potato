@@ -48,6 +48,8 @@ def exact_payload(invocation: ToolInvocation) -> dict:
 
 
 def create_tool_approval(db: Session, invocation: ToolInvocation) -> Approval:
+    if invocation.action == 'project.runner.digest':
+        raise ToolApprovalError('Runner approval is not enabled')
     if invocation.status != 'awaiting_approval':
         raise ToolApprovalError('Invocation does not require approval')
     payload = exact_payload(invocation)
@@ -136,6 +138,8 @@ def review_tool(db: Session, *, invocation_id: str, expected_hash: str,
     hint = db.get(ToolInvocation, invocation_id)
     if hint is None:
         raise ToolApprovalError('Invocation unavailable')
+    if hint.action == 'project.runner.digest':
+        raise ToolApprovalError('Runner approval is not enabled')
     source = db.get(Execution, hint.execution_id)
     if source is None:
         raise ToolApprovalError('Execution unavailable')

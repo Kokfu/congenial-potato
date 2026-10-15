@@ -131,6 +131,26 @@ def active_runner_grant_record(db: Session, *, project_id: str, agent_id: str,
     return row
 
 
+def current_runner_grant_record(db: Session, *, project_id: str,
+                                agent_id: str) -> RunnerProfileGrant:
+    """Resolve owner pins, then lock/recheck exact authority; no model pin input."""
+    row = db.scalar(select(RunnerProfileGrant).where(
+        RunnerProfileGrant.project_id == project_id,
+        RunnerProfileGrant.agent_id == agent_id,
+        RunnerProfileGrant.profile_id == PROFILE.profile_id)
+        .execution_options(populate_existing=True))
+    if row is None:
+        raise RunnerGrantDenied('Runner grant unavailable')
+    pins = _binding({key: getattr(row, key) for key in RunnerBinding.model_fields})
+    return active_runner_grant_record(db, project_id=project_id,
+                                     agent_id=agent_id, binding=pins)
+
+
+def runner_grant_snapshot(row: RunnerProfileGrant) -> dict:
+    return {'id': row.id, 'revision': row.revision,
+            **{key: getattr(row, key) for key in RunnerBinding.model_fields}}
+
+
 @router.get('/api/runner-profile')
 def reviewed_runner_profile(_: OwnerSession = Depends(current_session)):
     return {'profile_id': PROFILE.profile_id, 'profile_revision': PROFILE.revision,

@@ -17,6 +17,9 @@ from .activity import record_activity
 from .network_policy import canonical_public_url
 from .local_read_experiment import ReadDenied
 from .read_grants import active_read_grant_record
+from .reviewed_runner_contract import PROFILE, RunnerInput
+from .runner_grants import (RunnerGrantDenied, current_runner_grant_record,
+                            runner_grant_snapshot)
 
 
 class MemorySearchArgs(BaseModel):
@@ -45,6 +48,12 @@ class WebReadArgs(BaseModel):
     url: str = Field(min_length=1, max_length=2048)
     max_bytes: int = Field(default=65536, ge=1, le=65536)
     timeout_seconds: float = Field(default=3, gt=0, le=5)
+
+
+class RunnerDigestArgs(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    project_id: UUID
+    input: RunnerInput
 
 
 class ToolOutput(BaseModel):
@@ -76,6 +85,7 @@ DEFINITIONS = {definition.action: definition for definition in (
     ToolDefinition('project.artifact.read', 1, ArtifactReadArgs, 'read'),
     ToolDefinition('project.artifact.write', 1, ArtifactWriteArgs, 'write', True),
     ToolDefinition('project.web.read', 1, WebReadArgs, 'read', True),
+    ToolDefinition('project.runner.digest', 1, RunnerDigestArgs, 'write', True),
 )}
 
 
@@ -112,6 +122,8 @@ def parse_tool_output(content: str) -> tuple[ToolDefinition, dict, str, str]:
             resource = f"project:{project_id}/artifact-version:{args['version_id']}"
         elif definition.action == 'project.artifact.write':
             resource = f"project:{project_id}/artifact:{args['artifact_id']}"
+        elif definition.action == 'project.runner.digest':
+            resource = f'project:{project_id}/runner-profile:{PROFILE.profile_id}'
         else:
             host, _ = canonical_public_url(args['url'])
             if len(host) > 180:
@@ -159,9 +171,17 @@ def record_tool_output(db: Session, execution: Execution,
         except ReadDenied:
             snapshot = {**snapshot, 'reason': 'destination_grant_unavailable'}
             decision = type(decision)('deny', snapshot)
+    if definition.action == 'project.runner.digest' and decision.effect != 'deny':
+        try:
+            grant = current_runner_grant_record(db, project_id=task.project_id,
+                                               agent_id=execution.agent_id)
+            snapshot = {**snapshot, 'runner_grant': runner_grant_snapshot(grant)}
+        except RunnerGrantDenied:
+            snapshot = {**snapshot, 'reason': 'runner_grant_unavailable'}
+            decision = type(decision)('deny', snapshot)
     status = ({'deny': 'denied', 'allow': 'admitted',
                'require_approval': 'awaiting_approval'}[decision.effect]
-              if definition.action != 'project.web.read' else
+              if definition.action not in ('project.web.read', 'project.runner.digest') else
               ('denied' if decision.effect == 'deny' else 'proposed'))
     row = ToolInvocation(execution_id=execution.id, project_id=task.project_id,
                          action=definition.action, definition_version=definition.version,
