@@ -189,12 +189,18 @@ def manifest_digest(manifest: RunnerManifest) -> str:
     return hashlib.sha256(canonical_manifest(manifest).encode('utf-8')).hexdigest()
 
 
-def verify_runner_manifest(raw: str, *, expected_sha256: str,
-                           at: datetime | None = None) -> RunnerManifest:
+def pinned_runner_manifest(raw: str, *, expected_sha256: str) -> RunnerManifest:
+    """Inspect exact identity only, including historical attempts. No permission."""
     manifest = _parse(raw, RunnerManifest)
     if (not isinstance(expected_sha256, str) or len(expected_sha256) != 64
             or any(c not in '0123456789abcdef' for c in expected_sha256)
             or not hmac.compare_digest(manifest_digest(manifest), expected_sha256)):
         raise RunnerContractError('Runner manifest digest unavailable')
+    return manifest
+
+
+def verify_runner_manifest(raw: str, *, expected_sha256: str,
+                           at: datetime | None = None) -> RunnerManifest:
+    manifest = pinned_runner_manifest(raw, expected_sha256=expected_sha256)
     manifest.current(at)
     return manifest
