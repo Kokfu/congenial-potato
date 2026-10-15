@@ -19,7 +19,7 @@ from .local_read_experiment import ReadDenied
 from .read_grants import active_read_grant_record
 from .reviewed_runner_contract import PROFILE, RunnerInput
 from .runner_grants import (RunnerGrantDenied, current_runner_grant_record,
-                            runner_grant_snapshot)
+                            runner_grant_snapshot, runner_scope_snapshot)
 
 
 class MemorySearchArgs(BaseModel):
@@ -175,7 +175,8 @@ def record_tool_output(db: Session, execution: Execution,
         try:
             grant = current_runner_grant_record(db, project_id=task.project_id,
                                                agent_id=execution.agent_id)
-            snapshot = {**snapshot, 'runner_grant': runner_grant_snapshot(grant)}
+            snapshot = {**snapshot, 'runner_grant': runner_grant_snapshot(grant),
+                        'runner_scope': runner_scope_snapshot(execution)}
         except RunnerGrantDenied:
             snapshot = {**snapshot, 'reason': 'runner_grant_unavailable'}
             decision = type(decision)('deny', snapshot)

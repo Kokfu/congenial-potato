@@ -168,13 +168,13 @@ def test_cached_policy_rows_cannot_hide_new_owner_deny(authenticated):
         assert any(rule.effect == 'deny' for rule in retained_rules)
 
 
-def test_runner_approval_creation_is_closed_even_after_status_mutation(authenticated):
+def test_runner_approval_creation_requires_eligible_source(authenticated):
     from workforce.tool_approval import ToolApprovalError, create_tool_approval
     _, _, _, execution_id, output, _ = setup(authenticated)
     invocation_id = record(execution_id, output)
     with session_factory()() as db:
         invocation = db.get(ToolInvocation, invocation_id)
         invocation.status = 'awaiting_approval'
-        with pytest.raises(ToolApprovalError, match='not enabled'):
+        with pytest.raises(ToolApprovalError, match='source_unavailable'):
             create_tool_approval(db, invocation)
         assert db.scalar(select(Approval)) is None

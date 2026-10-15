@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 from .db import db_session
 from .models import Approval, OwnerSession, Project, SyntheticToolEffect, ToolInvocation
 from .security import current_session, require_csrf
-from .tool_approval import ToolApprovalError, review_tool, stage_web_read_approval
+from .tool_approval import (ToolApprovalError, review_tool, stage_web_read_approval,
+                            stage_runner_approval)
 
 router = APIRouter()
 
@@ -24,6 +25,23 @@ def stage_read_approval(invocation_id: str,
                         db: Session = Depends(db_session)):
     try:
         invocation, approval, reason = stage_web_read_approval(
+            db, invocation_id=invocation_id, owner_id=session.owner_id)
+    except ToolApprovalError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    db.commit()
+    if reason:
+        raise HTTPException(409, f'Proposal invalidated: {reason}')
+    return {'id': invocation.id, 'status': invocation.status,
+            'approval_id': approval.id, 'payload_hash': approval.payload_hash,
+            'target_version': approval.target_version}
+
+
+@router.post('/api/tool-invocations/{invocation_id}/stage-runner-approval')
+def stage_runner(invocation_id: str,
+                 session: OwnerSession = Depends(require_csrf),
+                 db: Session = Depends(db_session)):
+    try:
+        invocation, approval, reason = stage_runner_approval(
             db, invocation_id=invocation_id, owner_id=session.owner_id)
     except ToolApprovalError as exc:
         raise HTTPException(409, str(exc)) from exc
