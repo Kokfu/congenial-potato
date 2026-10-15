@@ -151,6 +151,11 @@ def runner_grant_snapshot(row: RunnerProfileGrant) -> dict:
             **{key: getattr(row, key) for key in RunnerBinding.model_fields}}
 
 
+def runner_scope_snapshot(source) -> dict:
+    return {'execution_id': source.id, 'agent_id': source.agent_id,
+            'root_id': source.root_id}
+
+
 @router.get('/api/runner-profile')
 def reviewed_runner_profile(_: OwnerSession = Depends(current_session)):
     return {'profile_id': PROFILE.profile_id, 'profile_revision': PROFILE.revision,

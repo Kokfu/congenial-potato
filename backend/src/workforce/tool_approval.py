@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from .artifact_read import ArtifactIntegrityError, read_version
 from .models import (Approval, ArtifactVersion, AuditEvent, BudgetAccount, Execution, Task,
-                     ToolInvocation, now)
+                     RunnerProfileGrant, ToolInvocation, now)
 from .tool_policy import evaluate_tool_policy
 from .activity import record_activity
 
@@ -23,8 +23,9 @@ def _digest(payload: dict) -> str:
 
 
 def _target_version(invocation: ToolInvocation) -> str | None:
-    if invocation.action == 'project.web.read':
-        grant = invocation.policy_snapshot.get('destination_grant', {})
+    if invocation.action in ('project.web.read', 'project.runner.digest'):
+        key = 'runner_grant' if invocation.action == 'project.runner.digest' else 'destination_grant'
+        grant = invocation.policy_snapshot.get(key, {})
         if grant.get('id') and grant.get('revision'):
             return f"{grant['id']}:{grant['revision']}"
         return None
@@ -36,7 +37,7 @@ def _target_version(invocation: ToolInvocation) -> str | None:
 
 
 def exact_payload(invocation: ToolInvocation) -> dict:
-    return {'execution_id': invocation.execution_id,
+    payload = {'execution_id': invocation.execution_id,
             'project_id': invocation.project_id,
             'action': invocation.action,
             'definition_version': invocation.definition_version,
@@ -45,14 +46,26 @@ def exact_payload(invocation: ToolInvocation) -> dict:
             'arguments': invocation.arguments,
             'resource': invocation.resource,
             'target_version': _target_version(invocation)}
+    if invocation.action == 'project.runner.digest':
+        payload['runner_binding'] = invocation.policy_snapshot.get('runner_grant')
+        payload['runner_scope'] = invocation.policy_snapshot.get('runner_scope')
+    return payload
 
 
 def create_tool_approval(db: Session, invocation: ToolInvocation) -> Approval:
-    if invocation.action == 'project.runner.digest':
-        raise ToolApprovalError('Runner approval is not enabled')
     if invocation.status != 'awaiting_approval':
         raise ToolApprovalError('Invocation does not require approval')
+    if invocation.action == 'project.runner.digest':
+        source = db.get(Execution, invocation.execution_id)
+        reason = (invocation_invalid_reason(db, invocation, source, 'require_approval')
+                  if source else 'source_unavailable')
+        if reason:
+            raise ToolApprovalError(reason)
     payload = exact_payload(invocation)
+    expiry = now() + timedelta(days=1)
+    if invocation.action == 'project.runner.digest':
+        grant = db.get(RunnerProfileGrant, invocation.policy_snapshot['runner_grant']['id'])
+        expiry = min(expiry, grant.expires_at)
     approval = Approval(execution_id=invocation.execution_id,
                         tool_invocation_id=invocation.id,
                         invocation_key=f'tool:{invocation.id}',
@@ -60,7 +73,7 @@ def create_tool_approval(db: Session, invocation: ToolInvocation) -> Approval:
                         schema_hash=invocation.schema_hash,
                         resource=invocation.resource,
                         target_version=payload['target_version'],
-                        status='pending', expires_at=now() + timedelta(days=1))
+                        status='pending', expires_at=expiry)
     db.add(approval)
     db.flush()
     db.add(AuditEvent(actor='worker', action='tool.approval.create',
@@ -76,9 +89,21 @@ def create_tool_approval(db: Session, invocation: ToolInvocation) -> Approval:
 def stage_web_read_approval(db: Session, *, invocation_id: str,
                             owner_id: str) -> tuple[ToolInvocation, Approval | None, str | None]:
     """Require an exact approval while keeping outbound execution unavailable."""
+    return _stage_inert_approval(db, invocation_id=invocation_id,
+                                owner_id=owner_id, action='project.web.read')
+
+
+def stage_runner_approval(db: Session, *, invocation_id: str,
+                           owner_id: str) -> tuple[ToolInvocation, Approval | None, str | None]:
+    return _stage_inert_approval(db, invocation_id=invocation_id,
+                                owner_id=owner_id, action='project.runner.digest')
+
+
+def _stage_inert_approval(db: Session, *, invocation_id: str, owner_id: str,
+                         action: str) -> tuple[ToolInvocation, Approval | None, str | None]:
     hint = db.get(ToolInvocation, invocation_id)
-    if hint is None or hint.action != 'project.web.read':
-        raise ToolApprovalError('Web read proposal unavailable')
+    if hint is None or hint.action != action:
+        raise ToolApprovalError('Staged tool proposal unavailable')
     source = db.get(Execution, hint.execution_id)
     if source is None:
         raise ToolApprovalError('Execution unavailable')
@@ -90,12 +115,23 @@ def stage_web_read_approval(db: Session, *, invocation_id: str,
         .execution_options(populate_existing=True)).scalar_one()
     if invocation.status == 'awaiting_approval':
         approval = db.scalar(select(Approval).where(
-            Approval.tool_invocation_id == invocation.id))
+            Approval.tool_invocation_id == invocation.id)
+            .with_for_update().execution_options(populate_existing=True))
         if approval is None or approval.status != 'pending':
             raise ToolApprovalError('Approval unavailable')
+        if action == 'project.runner.digest':
+            reason = _invalid_reason(db, invocation, approval, source)
+            if reason:
+                approval.status = 'expired' if reason == 'expired' else 'invalidated'
+                invocation.status = 'invalidated'
+                db.add(AuditEvent(actor=owner_id, action='tool.approval.stage',
+                    resource=invocation.id, outcome='invalidated', detail={'reason': reason}))
+                record_activity(db, project_id=invocation.project_id, actor=owner_id,
+                    action='tool.approval.stage', resource=invocation.id, outcome='invalidated')
+                return invocation, approval, reason
         return invocation, approval, None
     if invocation.status != 'proposed':
-        raise ToolApprovalError('Web read proposal is no longer open')
+        raise ToolApprovalError('Staged tool proposal is no longer open')
     reason = invocation_invalid_reason(db, invocation, source,
                                        expected_policy='require_approval')
     if reason is None and db.get(BudgetAccount, source.root_id) is None:
@@ -138,8 +174,6 @@ def review_tool(db: Session, *, invocation_id: str, expected_hash: str,
     hint = db.get(ToolInvocation, invocation_id)
     if hint is None:
         raise ToolApprovalError('Invocation unavailable')
-    if hint.action == 'project.runner.digest':
-        raise ToolApprovalError('Runner approval is not enabled')
     source = db.get(Execution, hint.execution_id)
     if source is None:
         raise ToolApprovalError('Execution unavailable')
@@ -183,7 +217,7 @@ def review_tool(db: Session, *, invocation_id: str, expected_hash: str,
         return invocation, approval, reason
     approval.status = 'approved'
     approval.decision_payload_hash = approval.payload_hash
-    invocation.status = ('approved_staged' if invocation.action == 'project.web.read'
+    invocation.status = ('approved_staged' if invocation.action in ('project.web.read', 'project.runner.digest')
                          else 'admitted')
     db.add(AuditEvent(actor=owner_id, action='tool.approval', resource=invocation.id,
                       outcome='approved', detail={'approval_id': approval.id,
@@ -205,8 +239,10 @@ def _invalid_reason(db: Session, invocation: ToolInvocation,
         approval.target_version != payload['target_version'] or
         approval.execution_id != invocation.execution_id):
         return 'approval_payload_changed'
-    return invocation_invalid_reason(db, invocation, source,
-                                     expected_policy='require_approval')
+    reason = invocation_invalid_reason(db, invocation, source,
+                                       expected_policy='require_approval')
+    # Locks/authority checks can consume the remaining approval lifetime.
+    return reason or ('expired' if approval.expires_at <= now() else None)
 
 
 def invocation_invalid_reason(db: Session, invocation: ToolInvocation,
@@ -243,6 +279,24 @@ def invocation_invalid_reason(db: Session, invocation: ToolInvocation,
             return 'destination_grant_unavailable'
         snapshot = {**snapshot, 'destination_grant': {
             'id': grant.id, 'revision': grant.revision}}
+    if invocation.action == 'project.runner.digest' and decision.effect != 'deny':
+        from .runner_grants import (RunnerGrantDenied, current_runner_grant_record,
+                                    runner_grant_snapshot, runner_scope_snapshot)
+        root = db.scalar(select(Execution).where(Execution.id == source.root_id)
+            .with_for_update().execution_options(populate_existing=True))
+        if root is None or root.cancelled:
+            return 'source_unavailable'
+        account = db.scalar(select(BudgetAccount).where(BudgetAccount.root_id == source.root_id)
+            .with_for_update().execution_options(populate_existing=True))
+        if account is None or account.cap - account.spent - account.reserved <= 0:
+            return 'root_budget_unavailable'
+        try:
+            grant = current_runner_grant_record(db, project_id=invocation.project_id,
+                                               agent_id=source.agent_id)
+        except RunnerGrantDenied:
+            return 'runner_grant_unavailable'
+        snapshot = {**snapshot, 'runner_grant': runner_grant_snapshot(grant),
+                    'runner_scope': runner_scope_snapshot(source)}
     if decision.effect != expected_policy or snapshot != invocation.policy_snapshot:
         return 'policy_changed'
     if not _precondition_current(db, invocation):
