@@ -20,9 +20,10 @@ class RuleInput(BaseModel):
     project_id: UUID
     agent_id: UUID | None = None
     action: Literal['project.memory.search', 'project.artifact.read',
-                    'project.artifact.write', 'project.web.read']
+                    'project.artifact.write', 'project.web.read', 'project.runner.digest']
     resource_id: UUID | None = None
     host: str | None = None
+    profile_id: Literal['synthetic.text-digest'] | None = None
     effect: Literal['allow', 'deny', 'require_approval']
 
 
@@ -49,10 +50,17 @@ def upsert_tool_policy(data: RuleInput,
     try:
         if (data.host is not None and data.action != 'project.web.read') or (data.host is not None and data.resource_id is not None) or (data.resource_id is not None and data.action == 'project.web.read'):
             raise PolicyError('Invalid policy resource')
+        if ((data.profile_id is not None and data.action != 'project.runner.digest')
+                or (data.profile_id is not None and
+                    (data.host is not None or data.resource_id is not None))
+                or (data.action == 'project.runner.digest' and
+                    (data.host is not None or data.resource_id is not None))):
+            raise PolicyError('Invalid runner policy resource')
         row = set_tool_policy(db, project_id=str(data.project_id),
                               agent_id=str(data.agent_id) if data.agent_id else None,
                               action=data.action,
-                              resource_id=(data.host if data.host is not None else
+                              resource_id=(data.profile_id if data.profile_id is not None else
+                                           data.host if data.host is not None else
                                            str(data.resource_id) if data.resource_id else None),
                               effect=data.effect, owner_id=session.owner_id)
     except PolicyError as exc:

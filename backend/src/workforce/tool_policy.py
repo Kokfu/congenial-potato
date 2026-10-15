@@ -32,6 +32,11 @@ def canonical_policy_resource(action: str, project_id: str,
             resource = canonical_public_host(resource_id)
             if len(resource) > 180:
                 raise ValueError('Host too long')
+        elif action == 'project.runner.digest' and resource_id is not None:
+            from .reviewed_runner_contract import PROFILE
+            if resource_id != PROFILE.profile_id:
+                raise ValueError('Unknown runner profile')
+            resource = resource_id
         else:
             resource = str(UUID(resource_id)) if resource_id else None
     except (ValueError, AttributeError) as exc:
@@ -45,6 +50,8 @@ def canonical_policy_resource(action: str, project_id: str,
         return f'{prefix}/artifact:{resource}'
     if action == 'project.web.read':
         return f'{prefix}/web-origin:{resource}'
+    if action == 'project.runner.digest':
+        return f'{prefix}/runner-profile:{resource}'
     raise PolicyError('Tool has no subresource scope')
 
 
@@ -91,7 +98,8 @@ def evaluate_tool_policy(db: Session, *, agent_id: str, project_id: str,
     if resource != prefix:
         segment = ('artifact-version:' if action == 'project.artifact.read' else
                    'artifact:' if action == 'project.artifact.write' else
-                   'web-origin:' if action == 'project.web.read' else '')
+                   'web-origin:' if action == 'project.web.read' else
+                   'runner-profile:' if action == 'project.runner.digest' else '')
         expected_start = prefix + '/' + segment
         if not segment or not resource.startswith(expected_start):
             return PolicyDecision('deny', {'reason': 'resource_scope_denied'})
@@ -105,7 +113,8 @@ def evaluate_tool_policy(db: Session, *, agent_id: str, project_id: str,
         PolicyRule.subject.in_([f'project:{project_id}', f'agent:{agent_id}']),
         PolicyRule.action == action,
         PolicyRule.resource.in_([prefix, resource]))
-        .order_by(PolicyRule.id).with_for_update()).all()
+        .order_by(PolicyRule.id).with_for_update()
+        .execution_options(populate_existing=True)).all()
     project_rules = [row for row in rows if row.subject == f'project:{project_id}']
     agent_rules = [row for row in rows if row.subject == f'agent:{agent_id}']
     snapshot = {'rules': [{'id': row.id, 'revision': row.revision,
