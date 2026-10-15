@@ -10,7 +10,7 @@ Updated: 2026-10-15. This is the execution ledger for the approved AI workforce 
 
 - [x] Phase 3–6 fixture gates are complete.
 - [x] Phase 7 local synthetic acceptance is complete: the final Docker-enabled suite passed 351 tests, followed by fresh-volume startup proof. Product outbound-read activation remains closed.
-- [ ] Phase 8 inert reviewed-runner contract is complete; the isolated local fixture is next; arbitrary shell/browser, real writes and product runner dispatch remain disabled.
+- [ ] Phase 8 inert contract and OS-isolated local fixture are complete; owner-pinned grants and governed attempts are next; arbitrary shell/browser, real writes and product runner dispatch remain disabled.
 
 ## Phase 1 tasks
 
@@ -143,8 +143,10 @@ Updated: 2026-10-15. This is the execution ledger for the approved AI workforce 
 ## Phase 8 fixture tasks
 
 - [x] **8.1 Inert reviewed-runner contract.** Define one fixed synthetic job/profile with bounded canonical input, exact scope/attempt/expiry and manifest digest. Reject model-selected commands, images, environment, paths, mounts, network and credentials. No launch, Docker socket or product dispatch is added. The 57 focused contract tests, Alembic metadata check, backend image build, non-root contract probe and fresh isolated Compose fixture/egress smoke passed. Evidence: `docs/research/reviewed-runner-contract-validation.md`.
-- [ ] **8.2a OS-isolated local runner fixture.** Bind actual reviewed fixed job code and an immutable image identity before launch. Prove non-root/read-only/no-network operation and capability/CPU/memory/PID/time/output bounds; persist a private fixture attempt before launch, test cancellation/restart uncertainty, and keep execution outside product dispatch. This alone establishes no database authorization.
+- [x] **8.2a OS-isolated local runner fixture.** Bind actual reviewed fixed job code and an immutable image identity before launch. Prove non-root/read-only/no-network operation and capability/CPU/memory/PID/time/output bounds; persist a private fixture attempt before launch, test cancellation/restart uncertainty, and keep execution outside product dispatch. This alone establishes no database authorization. Fourteen focused container cases and the final six guard cases passed. The final Docker-enabled full suite passed 456 tests; fresh isolated Compose/egress smoke and kernel swap-limit proof passed. Evidence: `docs/research/isolated-runner-validation.md`.
 - [ ] **8.2b Governed runner attempts.** Bind the isolated job to committed exact approvals/policy/scope, current grants/root budget/cancellation and independent database admission. Recheck authority before accepting a result; do not retry unknown outcomes or infer external truth from lost receipts. Synthetic external-write receipts/reconciliation follow in another slice; no real write integration or arbitrary shell/browser is authorized.
+
+- [ ] **8.2b.1 Owner-pinned runner profile grants.** First persist inert project/agent grants binding the one reviewed profile/revision/hash, immutable image ID and reviewed job digest, with owner-controlled expiry/revision/revocation. Require current project execution authority at lookup; expose metadata only and add no Docker access or product runner dispatch. Typed proposals/approvals and independent database admission follow separately.
 
 ## Working rules and evidence
 

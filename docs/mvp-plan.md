@@ -1,6 +1,6 @@
 # MVP plan
 
-Status: architecture approved; Phase 0, the foundation, and Phase 3–6 fixture gates are complete. Phase 7 local synthetic read acceptance is complete; product read/native activation remain gated. Phase 8 starts with an inert reviewed-runner fixture contract.
+Status: architecture approved; Phase 0, the foundation, and Phase 3–6 fixture gates are complete. Phase 7 local synthetic read acceptance is complete; product read/native activation remain gated. Phase 8 has an inert contract and OS-isolated fixed-job fixture; owner-pinned grants and governed attempts are next.
 
 ## Proof scenario
 

@@ -59,6 +59,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 51. [Clean isolated Compose bootstrap](research/clean-bootstrap-validation.md)
 52. [Phase 7 synthetic acceptance and closed product gate](research/phase-7-acceptance.md)
 53. [Inert reviewed-runner contract](research/reviewed-runner-contract-validation.md)
+54. [OS-isolated local runner fixture](research/isolated-runner-validation.md)
 
 ## Architecture
 
@@ -82,4 +83,4 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 
 ## Current coding task
 
-Follow [progress.md](../progress.md) task by task. Phase 7 local synthetic acceptance is complete, including the 351-case Docker-enabled run and later fresh-volume startup proof. Product reads and the Phase 2 native activation gate remain closed. The Phase 8 inert reviewed-runner contract passed 57 focused tests; the next slice is the OS-isolated local runner fixture; keep arbitrary shell/browser execution, paid calls, real outbound effects and production credentials disabled.
+Follow [progress.md](../progress.md) task by task. Phase 7 local synthetic acceptance and the Phase 8 OS-isolated fixed-job fixture are complete; the latest Docker-enabled backend run passed 456 tests and fresh-volume Compose smoke passed. Product reads, runner dispatch and Phase 2 native activation remain closed. Next persist inert owner-pinned runner profile grants before typed proposals and governed attempts. Keep arbitrary shell/browser execution, paid calls, real outbound effects and production credentials disabled.
