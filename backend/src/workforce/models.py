@@ -106,6 +106,27 @@ class ReadDestinationGrant(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class RunnerProfileGrant(Base):
+    __tablename__ = 'runner_profile_grants'
+    __table_args__ = (
+        UniqueConstraint('project_id', 'agent_id', 'profile_id', name='uq_runner_profile_scope'),
+        CheckConstraint('revision >= 1', name='ck_runner_profile_revision'),
+        CheckConstraint('profile_revision >= 1', name='ck_runner_profile_version'),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'))
+    agent_id: Mapped[str] = mapped_column(ForeignKey('agents.id'))
+    profile_id: Mapped[str] = mapped_column(String(120))
+    profile_revision: Mapped[int] = mapped_column(Integer)
+    profile_sha256: Mapped[str] = mapped_column(String(64))
+    image_id: Mapped[str] = mapped_column(String(71))
+    job_sha256: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class Agent(Base):
     __tablename__ = 'agents'
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
