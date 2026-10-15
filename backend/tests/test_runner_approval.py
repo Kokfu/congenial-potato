@@ -12,8 +12,8 @@ from workforce.tool_effects import apply_admitted_tools
 from test_runner_proposals import ACTION, setup, record
 
 
-def proposed(client):
-    h, project, agent, execution_id, output, payload = setup(client)
+def proposed(client, *, image_id=None):
+    h, project, agent, execution_id, output, payload = setup(client, image_id=image_id)
     invocation_id = record(execution_id, output)
     with session_factory()() as db:
         db.get(Execution, execution_id).status = 'succeeded'

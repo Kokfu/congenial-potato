@@ -1,6 +1,6 @@
 # Project progress
 
-Updated: 2026-10-15. This is the execution ledger for the approved AI workforce architecture. Work moves through these tasks in order; each task requires evidence before it is marked complete. Keep this file current as the product grows.
+Updated: 2026-10-16. This is the execution ledger for the approved AI workforce architecture. Work moves through these tasks in order; each task requires evidence before it is marked complete. Keep this file current as the product grows.
 
 ## Current position
 
@@ -10,7 +10,7 @@ Updated: 2026-10-15. This is the execution ledger for the approved AI workforce 
 
 - [x] Phase 3–6 fixture gates are complete.
 - [x] Phase 7 local synthetic acceptance is complete: the final Docker-enabled suite passed 351 tests, followed by fresh-volume startup proof. Product outbound-read activation remains closed.
-- [ ] Phase 8 inert contract and OS-isolated local fixture are complete; owner-pinned grants are persisted; inert proposals are persisted; exact approvals are staged; independent governed attempts are next; arbitrary shell/browser, real writes and product runner dispatch remain disabled.
+- [ ] Phase 8 inert contract and OS-isolated local fixture are complete; owner-pinned grants are persisted; inert proposals are persisted; exact approvals are staged; independent admission is implemented in an isolated fixture; result governance is next; arbitrary shell/browser, real writes and product runner dispatch remain disabled.
 
 ## Phase 1 tasks
 
@@ -149,7 +149,8 @@ Updated: 2026-10-15. This is the execution ledger for the approved AI workforce 
 - [x] **8.2b.1 Owner-pinned runner profile grants.** Persist inert project/agent grants binding the one reviewed profile/revision/hash, immutable image ID and reviewed job digest, with owner-controlled expiry/revision/revocation and stale-update rejection. Lookup refreshes locked authority and requires an active agent/current project execution grant. The final backend run passed 459 tests with 23 Docker cases skipped; migration round trip/metadata, built-image inert import and fresh isolated Compose fixture/egress/cleanup passed. Expose metadata only; add no Docker access or product runner dispatch. Evidence: `docs/research/runner-grant-validation.md`.
 - [x] **8.2b.2 Inert typed runner proposals.** Accept only project scope and bounded text for the fixed digest job. Resolve image/code/profile pins from the current owner grant, bind its exact ID/revision in the policy snapshot, require both project and agent policy ceilings and keep accepted rows `proposed`. The final 79 focused checks, metadata/image import and fresh isolated Compose fixture/egress/cleanup passed, covering synthetic worker output, cancellation, hostile fields, cached policy refresh and explicit approval/dispatcher denial. Evidence: `docs/research/runner-proposal-validation.md`.
 - [x] **8.2b.3 Exact staged runner approvals.** Bind current grant revision, image/code/profile/input/scope to durable owner approval; recheck authority at staging and decision, keep execution disabled. The final full backend run passed 520 tests with 23 Docker cases skipped; metadata check, built-image non-root inert import and fresh isolated Compose fixture/egress/cleanup passed. Evidence: `docs/research/runner-approval-validation.md`. Independent admitted attempts and isolated result governance follow separately.
-- [ ] **8.2b.4 Independent committed runner attempts.** Derive a manifest/capability only from an exact current staged approval, policy, grant, scope and root account under the root lock. Commit a single-use attempt and independent admission before any launch authorization; unknown outcomes may not reissue or switch executors. Exercise replay/concurrent/process-loss/cold-journal cases in synthetic isolated fixtures before result governance and product activation.
+- [x] **8.2b.4 Independent committed runner attempts.** Derive a manifest/capability only from an exact current staged approval, policy, grant, scope and root account under the root lock. Commit a single-use attempt and independent admission before any launch authorization; unknown outcomes may not reissue or switch executors. Replay/concurrent/process-loss and replaced-journal fixtures verify the fence; guarded downgrade preserves consumed admission. The full backend run passed 582 tests with 24 Docker cases skipped; the new bridge and 11 extra guard cases passed separately with Docker enabled, and metadata/image/Compose checks passed. No product dispatch or accepted application result is added. Evidence: `docs/research/runner-admission-validation.md`.
+- [ ] **8.2b.5 Governed isolated results.** Bind exact input/image/code/profile/manifest and admitted attempt to one bounded result record. Recheck fresh authority before acceptance, retain unknown/lost outcomes, fence duplicate/concurrent deliveries, and exercise in-flight cancellation/grant/expiry changes through the trusted isolated bridge. Keep result evidence distinct from a signed external execution attestation and keep product dispatch closed.
 
 ## Working rules and evidence
 

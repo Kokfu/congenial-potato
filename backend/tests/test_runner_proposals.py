@@ -17,7 +17,7 @@ from workforce.worker import dispatch_once
 ACTION = 'project.runner.digest'
 
 
-def setup(client, *, grant=True, policy=True):
+def setup(client, *, grant=True, policy=True, image_id=None):
     headers = {'Origin': 'http://localhost:8080',
                'X-CSRF-Token': client.cookies['workforce_csrf']}
     project = client.post('/api/projects', json={'name': 'Runner proposal'}, headers=headers).json()['id']
@@ -36,7 +36,7 @@ def setup(client, *, grant=True, policy=True):
             assert response.status_code == 201, response.text
     pins = client.get('/api/runner-profile').json()
     payload = {**pins, 'project_id': project, 'agent_id': agent,
-        'image_id': 'sha256:'+'a'*64, 'expires_at': (datetime.now(timezone.utc)+timedelta(hours=1)).isoformat(),
+        'image_id': image_id or 'sha256:'+'a'*64, 'expires_at': (datetime.now(timezone.utc)+timedelta(hours=1)).isoformat(),
         'enabled': True, 'expected_revision': 0}
     if grant:
         response = client.post('/api/runner-profile-grants', json=payload, headers=headers)
