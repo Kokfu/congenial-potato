@@ -357,3 +357,6 @@ from .read_observations import router as read_observations_router  # noqa: E402
 app.include_router(read_observations_router)
 from .read_grants import router as read_grants_router  # noqa: E402
 app.include_router(read_grants_router)
+
+from .runner_grants import router as runner_grants_router  # noqa: E402
+app.include_router(runner_grants_router)

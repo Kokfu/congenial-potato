@@ -10,7 +10,7 @@ Updated: 2026-10-15. This is the execution ledger for the approved AI workforce 
 
 - [x] Phase 3–6 fixture gates are complete.
 - [x] Phase 7 local synthetic acceptance is complete: the final Docker-enabled suite passed 351 tests, followed by fresh-volume startup proof. Product outbound-read activation remains closed.
-- [ ] Phase 8 inert contract and OS-isolated local fixture are complete; owner-pinned grants and governed attempts are next; arbitrary shell/browser, real writes and product runner dispatch remain disabled.
+- [ ] Phase 8 inert contract and OS-isolated local fixture are complete; owner-pinned grants are persisted; inert proposals and governed attempts are next; arbitrary shell/browser, real writes and product runner dispatch remain disabled.
 
 ## Phase 1 tasks
 
@@ -146,7 +146,9 @@ Updated: 2026-10-15. This is the execution ledger for the approved AI workforce 
 - [x] **8.2a OS-isolated local runner fixture.** Bind actual reviewed fixed job code and an immutable image identity before launch. Prove non-root/read-only/no-network operation and capability/CPU/memory/PID/time/output bounds; persist a private fixture attempt before launch, test cancellation/restart uncertainty, and keep execution outside product dispatch. This alone establishes no database authorization. Fourteen focused container cases and the final six guard cases passed. The final Docker-enabled full suite passed 456 tests; fresh isolated Compose/egress smoke and kernel swap-limit proof passed. Evidence: `docs/research/isolated-runner-validation.md`.
 - [ ] **8.2b Governed runner attempts.** Bind the isolated job to committed exact approvals/policy/scope, current grants/root budget/cancellation and independent database admission. Recheck authority before accepting a result; do not retry unknown outcomes or infer external truth from lost receipts. Synthetic external-write receipts/reconciliation follow in another slice; no real write integration or arbitrary shell/browser is authorized.
 
-- [ ] **8.2b.1 Owner-pinned runner profile grants.** First persist inert project/agent grants binding the one reviewed profile/revision/hash, immutable image ID and reviewed job digest, with owner-controlled expiry/revision/revocation. Require current project execution authority at lookup; expose metadata only and add no Docker access or product runner dispatch. Typed proposals/approvals and independent database admission follow separately.
+- [x] **8.2b.1 Owner-pinned runner profile grants.** Persist inert project/agent grants binding the one reviewed profile/revision/hash, immutable image ID and reviewed job digest, with owner-controlled expiry/revision/revocation and stale-update rejection. Lookup refreshes locked authority and requires an active agent/current project execution grant. The final backend run passed 459 tests with 23 Docker cases skipped; migration round trip/metadata, built-image inert import and fresh isolated Compose fixture/egress/cleanup passed. Expose metadata only; add no Docker access or product runner dispatch. Evidence: `docs/research/runner-grant-validation.md`.
+- [ ] **8.2b.2 Inert typed runner proposals.** Accept only project scope and bounded text for the fixed digest job. Resolve image/code/profile pins from the current owner grant, bind its exact ID/revision in the policy snapshot, require both project and agent policy ceilings and keep accepted rows `proposed`. Verify synthetic worker output, cancellation, hostile fields and no effect/approval route.
+- [ ] **8.2b.3 Exact staged runner approvals.** Bind current grant revision, image/code/profile/input/scope to durable owner approval; recheck authority at staging and decision, keep execution disabled. Independent admitted attempts and isolated result governance follow separately.
 
 ## Working rules and evidence
 
