@@ -151,7 +151,7 @@ def _container_run(*, image_id, attempt_id, binding, command, payload, cancelled
     container = None
     try:
         cleared_proxy = [item for name in PROXY_NAMES for item in ('--env',name+'=')]
-        container = docker('create', '-i', '--name', 'workforce-runner-'+attempt_id,
+        container = docker('create', '--pull', 'never', '-i', '--name', 'workforce-runner-'+attempt_id,
             '--label', 'workforce.runner.attempt='+attempt_id,
             '--label', 'workforce.runner.binding='+binding,
             '--network', 'none', '--read-only', '--user', '10001:10001',

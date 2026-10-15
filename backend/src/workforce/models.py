@@ -543,3 +543,26 @@ class ReadEffectAttempt(Base):
     broker_issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     broker_permit_consumed: Mapped[bool] = mapped_column(Boolean, default=False, server_default='false')
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class RunnerAttempt(Base):
+    """Row presence is consumed admission, even when delivery/execution is lost."""
+    __tablename__ = 'runner_attempts'
+    __table_args__ = (
+        CheckConstraint("status = 'unknown'", name='ck_runner_attempt_status'),
+        CheckConstraint('expires_at > issued_at', name='ck_runner_attempt_expiry'),
+    )
+    invocation_id: Mapped[str] = mapped_column(ForeignKey('tool_invocations.id'), primary_key=True)
+    approval_id: Mapped[str] = mapped_column(ForeignKey('approvals.id'))
+    agent_id: Mapped[str] = mapped_column(ForeignKey('agents.id'))
+    root_id: Mapped[str] = mapped_column(ForeignKey('executions.id'))
+    binding_hash: Mapped[str] = mapped_column(String(64))
+    manifest_sha256: Mapped[str] = mapped_column(String(64))
+    capability_hash: Mapped[str] = mapped_column(String(64))
+    image_id: Mapped[str] = mapped_column(String(71))
+    job_sha256: Mapped[str] = mapped_column(String(64))
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(30), default='unknown')
+    reason: Mapped[str | None] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
