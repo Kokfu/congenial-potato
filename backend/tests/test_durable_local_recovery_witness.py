@@ -450,3 +450,20 @@ def test_witness_database_replacement_is_a_known_unprotected_boundary(tmp_path):
     # Rollback of witness state reopens the invocation: production safety is not proven.
     assert call(replacement, {**used, 'request_id': str(uuid4())})['status'] == 'reserved'
 
+
+def test_witness_database_replacement_rewinds_generation(tmp_path):
+    """Generation is monotonic only while this replaceable local file is retained."""
+    path = tmp_path/'witness.sqlite3'
+    witness = create(path)
+    old_copy = tmp_path/'old-generation.sqlite3'
+    shutil.copy2(path, old_copy)
+
+    first = call(witness, {'operation': 'advance', 'request_id': str(uuid4())})
+    second = call(witness, {'operation': 'advance', 'request_id': str(uuid4())})
+    assert (first['generation'], second['generation']) == (2, 3)
+
+    # Replacing the database with a prior copy rolls the durable generation back.
+    shutil.copy2(old_copy, path)
+    restored = reopen(path)
+    assert call(restored, {'operation': 'generation'})['generation'] == 1
+
