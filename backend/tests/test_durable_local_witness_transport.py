@@ -2,6 +2,7 @@
 import json
 import os
 import socket
+import sqlite3
 import subprocess
 import sys
 import time
@@ -58,7 +59,8 @@ def stop_server(process):
 
 def client_program():
     return '''
-import json, sys
+import json, os, sys, time
+from pathlib import Path
 from durable_local_witness_transport import UnixWitnessClient
 from durable_local_recovery_witness import WitnessDenied
 from durable_local_witness_transport import WitnessTransportDenied
@@ -85,7 +87,12 @@ elif mode == 'reserve-only':
     request={'operation':'reserve','request_id':invocation,'ledger_id':ledger,
         'invocation_id':invocation,'intent_sha256':digest}
     print(json.dumps(client.request(request),sort_keys=True))
-elif mode == 'consume-ticket':
+elif mode in ('consume-ticket','consume-race'):
+    if mode == 'consume-race':
+        ready=Path(config['ready_dir'])/str(os.getpid())
+        ready.touch(mode=0o600)
+        while not Path(config['start_file']).exists():
+            time.sleep(0.005)
     ticket=json.load(open(config['ticket_path']))
     consume={'operation':'consume',**{key:ticket[key] for key in
         ('request_id','ledger_id','invocation_id','intent_sha256','generation','state_key_id','nonce')},
@@ -288,6 +295,68 @@ def test_state_key_rotation_survives_server_restart_and_fails_closed_during_reti
         assert retry.stdout.strip() == 'denied'
     finally:
         stop_server(retired_after_consume)
+
+
+@pytest.mark.skipif(not hasattr(__import__('socket'), 'SO_PEERCRED'),
+    reason='local peer credential transport requires Linux SO_PEERCRED')
+def test_separate_client_processes_racing_consume_commit_once(tmp_path):
+    socket_dir = tmp_path/'private-socket'
+    socket_dir.mkdir(mode=0o700)
+    state_dir = tmp_path/'witness-state'
+    state_dir.mkdir(mode=0o700)
+    state_path = state_dir/'witness.sqlite3'
+    DurableLocalRecoveryWitness(state_path,
+        caller_keys={CALLER:CALLER_KEY}, state_key=STATE_KEY, initialize=True)
+    config = {'socket_path':str(socket_dir/'witness.sock'),
+        'state_path':str(state_path), 'caller_keys':{CALLER:CALLER_KEY.hex()},
+        'state_key':STATE_KEY.hex()}
+    config_path = tmp_path/'server-config.json'
+    config_path.write_text(json.dumps(config))
+    config_path.chmod(0o600)
+    start_signal = tmp_path/'start-consume-race'
+    ready_dir = tmp_path/'ready-clients'
+    ready_dir.mkdir(mode=0o700)
+    ticket_path = tmp_path/'pending-ticket.json'
+    client_config_path = tmp_path/'client-config.json'
+    client_config = {'socket_path':config['socket_path'],
+        'ticket_path':str(ticket_path),'start_file':str(start_signal),
+        'ready_dir':str(ready_dir)}
+    client_config_path.write_text(json.dumps(client_config))
+    client_config_path.chmod(0o600)
+    args = [sys.executable,'-c',client_program(),str(client_config_path)]
+    client_env = dict(os.environ)
+    client_env['PYTHONPATH'] = str(Path(transport_module.__file__).parent) + os.pathsep + client_env.get('PYTHONPATH','')
+    invocation, ledger, digest = str(uuid4()), str(uuid4()), 'f'*64
+    server = start_server(config_path)
+    clients = []
+    try:
+        reserve = subprocess.run(args+[invocation,ledger,digest,'reserve-only'],
+            capture_output=True,text=True,env=client_env,timeout=10)
+        assert reserve.returncode == 0, reserve.stderr
+        ticket_path.write_text(reserve.stdout)
+        ticket_path.chmod(0o600)
+        clients = [subprocess.Popen(args+[invocation,ledger,digest,'consume-race'],
+            stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,env=client_env)
+            for _ in range(2)]
+        deadline = time.monotonic() + 5
+        while len(list(ready_dir.iterdir())) < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert len(list(ready_dir.iterdir())) == 2, 'client processes did not reach the consume barrier'
+        start_signal.touch(mode=0o600)
+        results = [client.communicate(timeout=10) for client in clients]
+        assert [client.returncode for client in clients] == [0,0]
+        replies = [stdout.strip() for stdout, _ in results]
+        assert replies.count('spent') == 1
+        assert replies.count('denied') == 1
+        with sqlite3.connect(state_path) as db:
+            assert db.execute("SELECT count(*) FROM witness_events "
+                "WHERE event='consumed'").fetchone()[0] == 1
+    finally:
+        for client in clients:
+            if client.poll() is None:
+                client.terminate()
+                client.wait(timeout=2)
+        stop_server(server)
 
 
 def test_server_rejects_non_private_socket_directory(tmp_path):
