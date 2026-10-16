@@ -96,6 +96,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 88. [Separate-process recovery-admin race](research/witness-process-admin-race-validation.md)
 89. [Lost consume reply across witness restart](research/witness-process-lost-consume-reply-validation.md)
 90. [Local witness RPC JSON validation](research/witness-rpc-json-validation.md)
+91. [Local witness oversized frame](research/witness-oversize-frame-validation.md)
 
 ## Architecture
 
