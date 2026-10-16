@@ -278,3 +278,21 @@ def test_disabled_before_database_or_ledger_access(authenticated, tmp_path):
     assert not (directory/'ledger.sqlite3').exists()
     with session_factory()() as db:
         assert db.get(SyntheticWriteAdmission, invocation_id) is None
+
+
+def test_joint_control_and_ledger_restore_exposes_reexecution_gap(authenticated, tmp_path):
+    """A rollback of both stores erases the current replay fence."""
+    invocation_id, intent, directory = prepared(authenticated, tmp_path)
+    first = verify_write_receipt(run(invocation_id, intent, directory), intent, key=KEY)
+    # Model restoring a pre-admission control snapshot and its matching empty
+    # ledger snapshot. This destructive operation touches disposable fixture state only.
+    with session_factory()() as db:
+        db.delete(db.get(SyntheticWriteAdmission, invocation_id))
+        db.delete(db.get(SyntheticWriteLedgerControl, 1))
+        db.commit()
+    (directory/'ledger.sqlite3').unlink()
+    second = verify_write_receipt(run(invocation_id, intent, directory), intent, key=KEY)
+    assert second.event_id != first.event_id
+    with sqlite3.connect(directory/'ledger.sqlite3') as db:
+        assert db.execute('SELECT revision FROM records').fetchone()[0] == 1
+        assert db.execute('SELECT count(*) FROM attempts').fetchone()[0] == 1
