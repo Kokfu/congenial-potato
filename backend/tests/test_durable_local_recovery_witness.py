@@ -554,3 +554,41 @@ def test_witness_database_replacement_rewinds_generation(tmp_path):
     restored = reopen(path)
     assert call(restored, {'operation': 'generation'})['generation'] == 1
 
+
+
+@pytest.mark.parametrize('operation', ['generation', 'reserve', 'consume', 'advance'])
+@pytest.mark.parametrize('caller,key_id', [
+    ('unknown-caller', 'caller-v1'), (CALLER, 'unknown-key'),
+    ('unknown-caller', 'unknown-key')])
+def test_empty_mac_and_missing_key_deny_before_state_changes(tmp_path, operation, caller, key_id):
+    path = tmp_path/'witness.sqlite3'
+    witness = create(path)
+    permit = call(witness, reserve_request())
+    requests = {'generation': {'operation': 'generation'},
+        'reserve': reserve_request(), 'consume': consume_request(permit),
+        'advance': {'operation': 'advance', 'request_id': str(uuid4())}}
+    method = witness.advance_generation if operation == 'advance' else getattr(witness, operation)
+    before = path.read_bytes()
+    with pytest.raises(WitnessDenied, match='caller authentication'):
+        method(caller_id=caller, caller_key_id=key_id,
+            request=requests[operation], mac='')
+    assert path.read_bytes() == before
+    assert call(witness, {'operation': 'generation'})['generation'] == 1
+    assert call(witness, consume_request(permit))['status'] == 'spent'
+
+
+@pytest.mark.parametrize('operation', ['generation', 'reserve', 'consume', 'advance'])
+def test_malformed_mac_denies_with_protocol_error_before_mutation(tmp_path, operation):
+    path = tmp_path/'witness.sqlite3'
+    witness = create(path)
+    permit = call(witness, reserve_request())
+    requests = {'generation': {'operation': 'generation'},
+        'reserve': reserve_request(), 'consume': consume_request(permit),
+        'advance': {'operation': 'advance', 'request_id': str(uuid4())}}
+    method = witness.advance_generation if operation == 'advance' else getattr(witness, operation)
+    before = path.read_bytes()
+    for bad in ('é'*64, '\ud800'*64, '', '0'*63, '0'*65, 'g'*64, None, b'', []):
+        with pytest.raises(WitnessDenied, match='caller authentication'):
+            method(caller_id=CALLER, request=requests[operation], mac=bad)
+        assert path.read_bytes() == before
+    assert call(witness, consume_request(permit))['status'] == 'spent'

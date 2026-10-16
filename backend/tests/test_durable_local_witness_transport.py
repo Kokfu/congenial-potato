@@ -11,6 +11,7 @@ import sys
 import time
 import threading
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -1184,3 +1185,41 @@ def test_shutdown_rejects_dispatch_that_passed_the_early_stop_check(tmp_path):
         release.set()
         caller.join(timeout=2)
         server.close()
+
+
+@pytest.mark.skipif(not hasattr(socket, 'SO_PEERCRED'),
+    reason='local peer credential transport requires Linux SO_PEERCRED')
+@pytest.mark.parametrize('operation', ['reserve', 'consume', 'advance'])
+def test_empty_mac_unknown_key_rpc_denies_before_commit(tmp_path, operation):
+    path = tmp_path/'state.sqlite3'
+    witness = DurableLocalRecoveryWitness(path, caller_keys={CALLER: CALLER_KEY},
+        state_key=STATE_KEY, advance_callers={CALLER}, initialize=True)
+    with TemporaryDirectory(prefix='witness-auth-') as private:
+        socket_path = Path(private)/'w.sock'
+        with LocalWitnessUnixServer(witness, socket_path):
+            client = UnixWitnessClient(socket_path, caller_id=CALLER, key=CALLER_KEY)
+            reserve = {'operation': 'reserve', 'request_id': str(uuid4()),
+                'ledger_id': str(uuid4()), 'invocation_id': str(uuid4()),
+                'intent_sha256': 'a'*64}
+            permit = client.request(reserve)
+            consume = {'operation': 'consume', **{name: permit[name] for name in
+                ('request_id', 'ledger_id', 'invocation_id', 'intent_sha256',
+                 'generation', 'state_key_id', 'nonce', 'ticket_mac')}}
+            request = {'reserve': {**reserve, 'request_id': str(uuid4()),
+                    'invocation_id': str(uuid4())}, 'consume': consume,
+                'advance': {'operation': 'advance', 'request_id': str(uuid4())}}[operation]
+            before = path.read_bytes()
+            frame = {'caller_id': CALLER, 'caller_key_id': 'unknown-key',
+                'request': request, 'exchange_nonce': str(uuid4()), 'mac': ''}
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+                connection.settimeout(2)
+                connection.connect(str(socket_path))
+                connection.sendall(json.dumps(frame).encode('ascii') + b'\n')
+                assert json.loads(transport_module._read_frame(connection)) == {'error': 'denied'}
+            assert path.read_bytes() == before
+            assert client.request({'operation': 'generation'})['generation'] == 1
+            assert client.request(consume)['status'] == 'spent'
+    with sqlite3.connect(path) as db:
+        assert db.execute('SELECT count(*) FROM reservations').fetchone()[0] == 1
+        assert db.execute('SELECT event FROM witness_events ORDER BY sequence').fetchall() == [
+            ('reserved',), ('consumed',)]
