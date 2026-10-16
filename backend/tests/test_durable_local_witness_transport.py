@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -861,3 +862,51 @@ def test_server_does_not_unlink_a_replacement_socket_after_stale_probe(tmp_path,
             after = path.lstat()
             assert (after.st_dev, after.st_ino) != (before.st_dev, before.st_ino)
             assert path.exists()
+
+
+def test_frame_receive_budget_does_not_restart_for_each_chunk(monkeypatch):
+    clock = SimpleNamespace(now=0.0)
+    monkeypatch.setattr(transport_module, 'time', SimpleNamespace(monotonic=lambda: clock.now), raising=False)
+
+    class SlowStream:
+        timeout = 1.0
+
+        def __init__(self):
+            self.chunks = iter([b'{"', b'status":', b'"current"}\n'])
+
+        def gettimeout(self):
+            return self.timeout
+
+        def settimeout(self, value):
+            self.timeout = value
+
+        def recv(self, size):
+            if self.timeout < 0.4:
+                clock.now += self.timeout
+                raise TimeoutError('fixture receive budget expired')
+            clock.now += 0.4
+            return next(self.chunks)
+
+    with pytest.raises((WitnessTransportDenied, TimeoutError)):
+        transport_module._read_frame(SlowStream())
+    assert clock.now <= 1.0
+
+
+def test_server_expires_partial_frame_without_mutation_and_serves_next_client(tmp_path, monkeypatch):
+    monkeypatch.setattr(transport_module, '_FRAME_TIMEOUT', 0.05, raising=False)
+    directory = tmp_path/'private'
+    directory.mkdir(mode=0o700)
+    path = directory/'witness.sock'
+    witness = DurableLocalRecoveryWitness(tmp_path/'state.sqlite3',
+        caller_keys={CALLER: CALLER_KEY}, state_key=STATE_KEY, initialize=True)
+    with LocalWitnessUnixServer(witness, path):
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            connection.settimeout(2)
+            connection.connect(str(path))
+            connection.sendall(b'{')
+            assert json.loads(transport_module._read_frame(connection)) == {'error': 'denied'}
+        client = UnixWitnessClient(path, caller_id=CALLER, key=CALLER_KEY)
+        assert client.request({'operation': 'generation'})['generation'] == 1
+        with sqlite3.connect(witness.path) as db:
+            assert db.execute('SELECT count(*) FROM reservations').fetchone()[0] == 0
+            assert db.execute('SELECT count(*) FROM witness_events').fetchone()[0] == 0
