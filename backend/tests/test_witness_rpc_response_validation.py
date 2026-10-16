@@ -2,11 +2,13 @@
 import json
 import socket
 import sqlite3
+import sys
 import tempfile
 import threading
 import unittest
 from pathlib import Path
 from uuid import uuid4
+from unittest.mock import patch
 
 from durable_local_recovery_witness import DurableLocalRecoveryWitness, WitnessDenied, request_mac
 from durable_local_witness_transport import (
@@ -236,6 +238,63 @@ class WitnessResponseValidationTests(unittest.TestCase):
                     with sqlite3.connect(self.witness.path) as db:
                         self.assertEqual(db.execute('SELECT count(*) FROM reservations').fetchone(), (0,))
                         self.assertEqual(db.execute('SELECT count(*) FROM witness_events').fetchone(), (0,))
+
+    def test_deep_response_json_maps_to_transport_denial(self):
+        depth = 6000
+        payload = b'[' * depth + b'0' + b']' * depth
+        self.assertLess(len(payload), 16 * 1024)
+        with self.assertRaises(WitnessTransportDenied):
+            self.request_from_fixture_peer(payload)
+
+    def test_decoder_recursion_failure_maps_to_transport_denial(self):
+        payload = json.dumps(self.response).encode('ascii')
+        with patch('durable_local_witness_transport.json.loads',
+                side_effect=RecursionError('fixture decoder recursion failure')):
+            with self.assertRaises(WitnessTransportDenied):
+                self.request_from_fixture_peer(payload)
+
+    def test_large_integer_decode_failure_maps_to_transport_denial(self):
+        limit = sys.get_int_max_str_digits()
+        if not limit:
+            self.skipTest('interpreter integer-string limit is disabled')
+        payload = b'9' * (limit + 100)
+        self.assertLess(len(payload), 16 * 1024)
+        with self.assertRaises(WitnessTransportDenied):
+            self.request_from_fixture_peer(payload)
+
+    def test_nonfinite_response_numbers_reject_even_with_valid_fixture_mac(self):
+        numbers = [('nan', float('nan'), None),
+            ('infinity', float('inf'), None), ('negative_infinity', float('-inf'), None),
+            ('exponent_overflow', float('inf'), '1e999'),
+            ('negative_exponent_overflow', float('-inf'), '-1e999')]
+        for label, value, replacement in numbers:
+            def payload(frame):
+                reply = DurableLocalRecoveryWitness._envelope(self.key,
+                    {'generation': value, 'status': 'current'}, request_binding=frame['mac'])
+                raw = json.dumps(reply)
+                if replacement is not None:
+                    raw = raw.replace('-Infinity' if value < 0 else 'Infinity', replacement)
+                return raw.encode('ascii')
+
+            with self.subTest(number=label):
+                with self.assertRaises(WitnessTransportDenied):
+                    self.request_from_fixture_peer(payload)
+
+    def test_deep_request_json_is_denied_without_mutation_and_service_continues(self):
+        depth = 6000
+        payload = b'[' * depth + b'0' + b']' * depth + b'\n'
+        self.assertLess(len(payload), 16 * 1024)
+        path = self.root/'nested.sock'
+        before = self.witness.path.read_bytes()
+        with LocalWitnessUnixServer(self.witness, path):
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+                connection.settimeout(2)
+                connection.connect(str(path))
+                connection.sendall(payload)
+                self.assertEqual(json.loads(_read_frame(connection)), {'error': 'denied'})
+            client = UnixWitnessClient(path, caller_id=self.caller, key=self.key)
+            self.assertEqual(client.request(self.request)['generation'], 1)
+        self.assertEqual(self.witness.path.read_bytes(), before)
 
 
 if __name__ == '__main__':
