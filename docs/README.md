@@ -100,6 +100,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 92. [Consolidated local witness recovery drill](research/witness-consolidated-recovery-drill-validation.md)
 93. [Witness outage effect-boundary drill](research/witness-outage-effect-boundary-validation.md)
 94. [Witness authentication effect-boundary drill](research/witness-auth-effect-boundary-validation.md)
+95. [Witness trust-boundary lifecycle and prerequisites](research/witness-trust-boundary-lifecycle.md)
 
 ## Architecture
 
