@@ -51,6 +51,7 @@ class SimulatedMonotonicRecoveryWitness:
         self._generation = generation
         self._available = True
         self._consumed = set()
+        self._issued = {}
         self._lock = Lock()
 
     def _require_available(self):
@@ -78,11 +79,21 @@ class SimulatedMonotonicRecoveryWitness:
             raise RecoveryWitnessDenied('Recovery witness intent unavailable')
         with self._lock:
             self._require_available()
+            if invocation_id in self._consumed:
+                raise RecoveryWitnessDenied('Recovery witness invocation already consumed')
+            previous = self._issued.get(invocation_id)
+            if previous is not None:
+                if (previous.ledger_id, previous.intent_sha256) != (ledger_id, intent_sha256):
+                    raise RecoveryWitnessDenied('Recovery witness binding unavailable')
+                if previous.generation == self._generation:
+                    return previous
             nonce = str(uuid4())
             message = _body(self._generation, ledger_id, invocation_id, intent_sha256, nonce)
             signature = hmac.digest(self._key, _DOMAIN+message, 'sha256').hex()
-            return RecoveryTicket(self._generation, ledger_id, invocation_id,
+            permit = RecoveryTicket(self._generation, ledger_id, invocation_id,
                 intent_sha256, nonce, signature)
+            self._issued[invocation_id] = permit
+            return permit
 
     def consume(self, ticket, *, ledger_id, invocation_id, intent_sha256):
         if type(ticket) is not RecoveryTicket:
