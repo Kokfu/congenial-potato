@@ -263,9 +263,11 @@ class DurableLocalRecoveryWitness:
         if self._available is not True:
             raise WitnessDenied('witness unavailable')
         key = self._caller_keys.get(caller_id, {}).get(caller_key_id) if type(caller_id) is str and type(caller_key_id) is str else None
+        if key is None or type(mac) is not str or re.fullmatch(r'[0-9a-f]{64}', mac) is None:
+            raise WitnessDenied('witness caller authentication failed')
         expected = request_mac(key, caller_id, request, caller_key_id,
-            exchange_nonce=exchange_nonce) if key else ''
-        if type(mac) is not str or not hmac.compare_digest(expected, mac):
+            exchange_nonce=exchange_nonce)
+        if not hmac.compare_digest(expected, mac):
             raise WitnessDenied('witness caller authentication failed')
         return key
 
