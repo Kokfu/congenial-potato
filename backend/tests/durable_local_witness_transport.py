@@ -7,6 +7,7 @@ import stat
 import struct
 import threading
 from pathlib import Path
+from uuid import uuid4
 
 from durable_local_recovery_witness import (DurableLocalRecoveryWitness,
     WitnessDenied, request_mac, verify_response)
@@ -65,9 +66,11 @@ class UnixWitnessClient:
         if type(request) is not dict:
             raise WitnessTransportDenied('witness request unavailable')
         key = self.keys[self.current_key_id]
+        exchange_nonce = str(uuid4())
         frame = {'caller_id': self.caller_id, 'caller_key_id': self.current_key_id,
-                 'request': request,
-                 'mac': request_mac(key, self.caller_id, request, self.current_key_id)}
+                 'request': request, 'exchange_nonce': exchange_nonce,
+                 'mac': request_mac(key, self.caller_id, request, self.current_key_id,
+                     exchange_nonce=exchange_nonce)}
         payload = _json_bytes(frame) + b'\n'
         if len(payload) > _MAX_FRAME:
             raise WitnessTransportDenied('witness transport frame unavailable')
@@ -104,8 +107,9 @@ class _UnixHandler(socketserver.BaseRequestHandler):
                 raise WitnessTransportDenied('peer identity unavailable')
             envelope = json.loads(_read_frame(connection).decode('ascii'),
                 object_pairs_hook=_unique_json_object)
-            if (type(envelope) is not dict or set(envelope) != {'caller_id','caller_key_id','request','mac'} or
-                    type(envelope['caller_id']) is not str or type(envelope['request']) is not dict):
+            if (type(envelope) is not dict or set(envelope) != {'caller_id','caller_key_id','request','exchange_nonce','mac'} or
+                    type(envelope['caller_id']) is not str or type(envelope['request']) is not dict or
+                    type(envelope['exchange_nonce']) is not str):
                 raise WitnessTransportDenied('witness request unavailable')
             operation = envelope['request'].get('operation')
             methods = {'generation': self.server.witness.generation,
@@ -116,7 +120,8 @@ class _UnixHandler(socketserver.BaseRequestHandler):
             if method is None:
                 raise WitnessDenied('witness request unavailable')
             response = method(caller_id=envelope['caller_id'], request=envelope['request'],
-                              mac=envelope['mac'], caller_key_id=envelope['caller_key_id'])
+                              mac=envelope['mac'], caller_key_id=envelope['caller_key_id'],
+                              exchange_nonce=envelope['exchange_nonce'])
         except (WitnessDenied, WitnessTransportDenied, OSError, UnicodeError,
                 json.JSONDecodeError, ValueError, KeyError, TypeError):
             response = {'error': 'denied'}
