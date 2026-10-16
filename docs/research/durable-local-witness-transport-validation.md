@@ -4,6 +4,8 @@ Date: 2026-10-16. Branch: `phase-8-local-witness-transport`. Parent: durable wit
 
 ## Local transport
 
+Phase 8.4am follow-up: [response/request binding](witness-rpc-response-binding-validation.md) replaces the test-only v1 response envelope with v2, authenticating the exact request MAC and requiring the client to compare it. The original Phase 8.4c behavior and results below are historical; response freshness for identical requests remains a separate gap.
+
 `backend/tests/durable_local_witness_transport.py` adds a test-only JSON request/response transport over a Unix domain socket. The fixture server checks Linux `SO_PEERCRED` and requires the connecting process to run as the configured local UID (the current UID in this prototype). The socket directory must be an owned mode-0700 directory, and the socket is mode 0600. The client sends the caller identity and an HMAC over the canonical request. The witness checks that MAC; the client verifies the response MAC before using any returned status. Frames are newline-delimited and capped at 16 KiB. Unknown, malformed, oversized, unauthenticated and unavailable requests fail closed.
 
 The server and caller run as separate local processes in the transport test. It exercises request authentication, response authentication, exact reservation retry, consume, caller-key denial, server outage, server replacement/restart, and persistence of a spent identity across that restart. The server uses the existing SQLite witness protocol state and does not import or connect to product dispatch.

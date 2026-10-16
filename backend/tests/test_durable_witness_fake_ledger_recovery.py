@@ -32,9 +32,10 @@ def create_intent():
 
 
 def authenticated(method, request, *, caller=CALLER, key=CALLER_KEY):
+    mac = request_mac(key, caller, request)
     response = method(caller_id=caller, request=request,
-        mac=request_mac(key, caller, request))
-    return verify_response(key, response)
+        mac=mac)
+    return verify_response(key, response, expected_request_mac=mac)
 
 
 def reserve_and_consume(witness, intent):
@@ -273,6 +274,7 @@ def test_unauthenticated_request_and_tampered_reservation_reply_stop_before_effe
     # Model a response modified in transit: the client must verify before consuming it.
     monkeypatch.setattr(witness, 'reserve', lambda **kwargs: {
         'body': {'status': 'reserved', **reserve}, 'key_id': 'caller-v1',
+        'request_mac': kwargs['mac'],
         'mac': '0' * 64})
     with pytest.raises(WitnessDenied, match='response authentication'):
         apply_through_fixture(witness, intent, control, ledger_dir)
