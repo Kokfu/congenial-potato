@@ -22,7 +22,7 @@ This note consolidates what the local synthetic prototype exercises and the life
 - Integration evidence against the actual control database and authorized effect adapters, plus operational review of restore, replacement, concurrency, outage, and recovery drills in that protected environment.
 - Separate owner authorization and review before enabling any product dispatch or external write path.
 
-These prerequisites are not provided by this repository's fixtures. Docker/PostgreSQL integration remains unrun in the current environment. No claim is made about physical power loss, protected infrastructure, external execution truth, or production safety. Product execution, external writes, paid activation, and deployment remain disabled.
+These prerequisites are not provided by this repository's fixtures. The [Phase 8.4bc local PostgreSQL wrapper check](witness-postgres-restore-wrapper-validation.md) passed three simulated control/ledger rollback cases against a disposable database; this does not provide protected-service, actual backup restore or external adapter integration evidence. No claim is made about physical power loss, protected infrastructure, external execution truth, or production safety. Product execution, external writes, paid activation, and deployment remain disabled.
 
 ## Validation
 
