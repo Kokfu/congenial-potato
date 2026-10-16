@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from tempfile import TemporaryDirectory
 from datetime import datetime, timezone
-from threading import Barrier
+from threading import Barrier, Event
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -382,3 +382,68 @@ def test_live_witness_blocks_single_or_joint_store_rollback(authenticated, tmp_p
         with sqlite3.connect(directory/'ledger.sqlite3') as db:
             assert db.execute('SELECT count(*) FROM records').fetchone()[0] == 1
             assert db.execute('SELECT count(*) FROM attempts').fetchone()[0] == 1
+
+
+@pytest.mark.skipif(not hasattr(socket, 'SO_PEERCRED'),
+    reason='local peer credential transport requires Linux SO_PEERCRED')
+def test_lost_rpc_consume_reply_keeps_postgres_and_fake_ledger_empty(authenticated,
+        tmp_path, monkeypatch):
+    invocation_id, intent, directory = prepared(authenticated, tmp_path)
+    witness_path = tmp_path/'separate-witness-fixture'/'witness.sqlite3'
+    caller, key = 'synthetic-write-fixture', b'c'*32
+    witness = DurableLocalRecoveryWitness(witness_path,
+        caller_keys={caller: key}, state_key=b'r'*32, initialize=True)
+    binding = {'operation': 'reserve', 'request_id': invocation_id,
+        'ledger_id': str(intent.ledger_id), 'invocation_id': invocation_id,
+        'intent_sha256': intent_digest(intent)}
+    committed = Event()
+    original_consume = witness.consume
+
+    def observed_consume(**kwargs):
+        reply = original_consume(**kwargs)
+        committed.set()  # Observe the real commit, without changing its result.
+        return reply
+
+    monkeypatch.setattr(witness, 'consume', observed_consume)
+    with TemporaryDirectory(prefix='witness-pg-') as private:
+        path = Path(private)/'w.sock'
+        with LocalWitnessUnixServer(witness, path):
+            client = UnixWitnessClient(path, caller_id=caller, key=key)
+            permit = client.request(binding)
+            consume = {'operation': 'consume', **{name: permit[name] for name in
+                ('request_id', 'ledger_id', 'invocation_id', 'intent_sha256',
+                 'generation', 'state_key_id', 'nonce', 'ticket_mac')}}
+            exchange_nonce = str(uuid4())
+            frame = {'caller_id': caller, 'caller_key_id': 'caller-v1',
+                'request': consume, 'exchange_nonce': exchange_nonce,
+                'mac': request_mac(key, caller, consume,
+                    exchange_nonce=exchange_nonce)}
+            # Send a valid consume frame and close without reading any reply.
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+                connection.settimeout(2)
+                connection.connect(str(path))
+                connection.sendall(json.dumps(frame).encode('ascii') + b'\n')
+            assert committed.wait(2), 'consume did not commit before the deadline'
+
+        witness = DurableLocalRecoveryWitness(witness_path,
+            caller_keys={caller: key}, state_key=b'r'*32)
+        with LocalWitnessUnixServer(witness, path):
+            client = UnixWitnessClient(path, caller_id=caller, key=key)
+            assert client.request({'operation': 'generation'})['generation'] == 1
+            with pytest.raises(WitnessTransportDenied):
+                client.request(binding)
+            with pytest.raises(WitnessTransportDenied):
+                client.request(consume)
+                run(invocation_id, intent, directory)
+
+    # Uncertain consumption burns this invocation; no effect is guessed/retried.
+    with session_factory()() as db:
+        assert db.get(SyntheticWriteAdmission, invocation_id) is None
+        assert db.get(SyntheticWriteLedgerControl, 1) is None
+        assert not db.scalars(select(AuditEvent).where(
+            AuditEvent.action == 'synthetic.write.admission')).all()
+    assert not (directory/'ledger.sqlite3').exists()
+    with sqlite3.connect(witness_path) as db:
+        assert db.execute('SELECT count(*) FROM reservations WHERE consumed=1').fetchone()[0] == 1
+        assert db.execute('SELECT event FROM witness_events ORDER BY sequence').fetchall() == [
+            ('reserved',), ('consumed',)]

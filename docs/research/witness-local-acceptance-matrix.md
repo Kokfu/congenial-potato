@@ -1,6 +1,6 @@
-# Local witness acceptance matrix: Phase 8.4be
+# Local witness acceptance matrix: Phase 8.4bf
 
-Date: 2026-10-16. Branch: `phase-8-witness-admission-regression-checkpoint`. Parent: draft PR [#128](https://github.com/Kokfu/congenial-potato/pull/128), commit `5442b898a89dd31b18d4f024d49650aa4234c28b`.
+Date: 2026-10-16. Branch: `phase-8-witness-postgres-lost-consume-reply`. Parent: draft PR [#129](https://github.com/Kokfu/congenial-potato/pull/129), commit `c5ef2030473707ad594b40fdc22977425d45dfd5`.
 
 This is the current local synthetic checkpoint. The fixture protocol, same-host transport and fake-ledger drills do not constitute an independent recovery service or product activation. Expected rollback and caller-effect limitations are recorded separately below.
 
@@ -15,6 +15,8 @@ The [fixed local checker](witness-local-check-command.md) tests the checkout dir
 The latest six-module local runtime check is Phase 8.4bb: **120 local cases passed in 4.93s**, **65 product Python files passed the static fixture-import guard**, and **15 files compiled**. Separately, Phase 8.4bd passed **6 PostgreSQL-backed witness restore-wrapper cases in 9.76s** (three direct and three Unix-RPC), after fresh application/workflow migrations; see [RPC cases and limits](witness-postgres-rpc-restore-validation.md) and [database setup](witness-postgres-restore-wrapper-validation.md). The 120-case command was not rerun for this documentation increment. Collection-only inspection verified the exact six-module, 120-case inventory; changed-document links plus `git diff --check` passed.
 
 Phase 8.4be additionally passed the **complete 34-case admission file in 55.79s**, including those six restore cases and migration safeguards; see [admission regression checkpoint](witness-admission-regression-checkpoint.md). These counts overlap and must not be added together.
+
+Phase 8.4bf adds an abandoned consume-reply case before PostgreSQL admission: **7 focused cases passed in 11.66s**, including the six restore regressions. PostgreSQL admission/control/audit and the fake-ledger file remain absent after denied retries, while witness consumption persists; see [abandoned reply evidence](witness-postgres-lost-consume-reply-validation.md). The full admission file was not rerun after adding this case.
 
 | Collected module | Cases |
 | --- | ---: |
