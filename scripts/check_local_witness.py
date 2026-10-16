@@ -15,6 +15,8 @@ FIXTURE_MODULES = frozenset({
     'run_durable_local_witness_server',
     'synthetic_write_recovery_witness',
     'synthetic_write_ledger',
+    'synthetic_write_admission',
+    'synthetic_write_receipt_acceptance',
 })
 TEST_NAMES = (
     'test_durable_local_recovery_witness.py',
