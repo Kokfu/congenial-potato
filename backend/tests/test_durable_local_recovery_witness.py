@@ -1,6 +1,7 @@
 """Durability and authentication contract tests for the local-only prototype."""
 import shutil
 import json
+import hmac
 import sqlite3
 import subprocess
 import sys
@@ -19,6 +20,51 @@ CALLER_KEY = b'c' * 32
 STATE_KEY = b's' * 32
 LEDGER = str(uuid4())
 INTENT = 'a' * 64
+
+
+@pytest.mark.parametrize('exchange_nonce', [None, str(uuid4())], ids=['direct', 'exchange'])
+def test_caller_and_key_id_boundaries_cannot_relabel_a_request_mac(tmp_path, exchange_nonce):
+    # The fixture deliberately reuses key bytes to isolate message encoding.
+    key = b'k' * 32
+    ordinary, ordinary_key_id = 'a\0b', 'c'
+    admin, admin_key_id = 'a', 'b\0c'
+    path = tmp_path/'state.sqlite3'
+    witness = DurableLocalRecoveryWitness(path,
+        caller_keys={ordinary: {ordinary_key_id: key}, admin: {admin_key_id: key}},
+        current_caller_key_ids={ordinary: ordinary_key_id, admin: admin_key_id},
+        state_key=STATE_KEY, advance_callers={admin}, initialize=True)
+    request = {'operation': 'advance', 'request_id': str(uuid4())}
+    ordinary_mac = request_mac(key, ordinary, request, ordinary_key_id,
+        exchange_nonce=exchange_nonce)
+    with pytest.raises(WitnessDenied, match='caller authentication'):
+        witness.advance_generation(caller_id=admin, caller_key_id=admin_key_id,
+            request=request, mac=ordinary_mac, exchange_nonce=exchange_nonce)
+    with sqlite3.connect(path) as db:
+        assert db.execute('SELECT generation FROM witness_state').fetchone()[0] == 1
+        assert db.execute('SELECT count(*) FROM witness_events').fetchone()[0] == 0
+        assert db.execute('SELECT count(*) FROM generation_operations').fetchone()[0] == 0
+
+    # The old delimiter format must not remain available as a fallback.
+    old_domain = b'workforce.synthetic.write.witness.request.v1\0'
+    old_body = request
+    if exchange_nonce is not None:
+        old_domain = b'workforce.synthetic.write.witness.exchange.request.v1\0'
+        old_body = {'exchange_nonce': exchange_nonce, 'request': request}
+    old_mac = hmac.digest(key, old_domain + admin.encode() + b'\0' +
+        admin_key_id.encode() + b'\0' + json.dumps(old_body,
+            sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode('ascii'), 'sha256').hex()
+    with pytest.raises(WitnessDenied, match='caller authentication'):
+        witness.advance_generation(caller_id=admin, caller_key_id=admin_key_id,
+            request=request, mac=old_mac, exchange_nonce=exchange_nonce)
+
+    admin_mac = request_mac(key, admin, request, admin_key_id,
+        exchange_nonce=exchange_nonce)
+    assert ordinary_mac != admin_mac
+    reply = witness.advance_generation(caller_id=admin, caller_key_id=admin_key_id,
+        request=request, mac=admin_mac, exchange_nonce=exchange_nonce)
+    assert verify_response(key, reply, admin_key_id, expected_request_mac=admin_mac)['generation'] == 2
+    with sqlite3.connect(path) as db:
+        assert db.execute('SELECT caller_id, caller_key_id FROM witness_events').fetchall() == [(admin, admin_key_id)]
 
 
 def call(witness, request, *, key=CALLER_KEY, caller=CALLER, key_id='caller-v1'):
