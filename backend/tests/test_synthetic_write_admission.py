@@ -26,8 +26,8 @@ from workforce.synthetic_write_contract import (SyntheticWriteIntent,
 from synthetic_write_ledger import SyntheticWriteLedger
 from workforce.tool_approval import _digest
 from test_tool_approval import decide, proposed_write
-from synthetic_write_recovery_witness import (RecoveryWitnessDenied,
-    SimulatedMonotonicRecoveryWitness)
+from durable_local_recovery_witness import (DurableLocalRecoveryWitness,
+    WitnessDenied, request_mac, verify_response)
 
 KEY = b'w' * 32
 LEDGER_ID = UUID('5f94d899-9e2c-4f4e-9d2f-62b62102ae51')
@@ -303,16 +303,32 @@ def test_joint_control_and_ledger_restore_exposes_reexecution_gap(authenticated,
 @pytest.mark.parametrize('rollback', ['control', 'ledger', 'both'])
 def test_live_witness_blocks_single_or_joint_store_rollback(authenticated, tmp_path, rollback):
     invocation_id, intent, directory = prepared(authenticated, tmp_path)
-    witness = SimulatedMonotonicRecoveryWitness(b'r'*32)
+    witness_path = tmp_path/'separate-witness-fixture'/'witness.sqlite3'
+    witness = DurableLocalRecoveryWitness(witness_path,
+        caller_keys={'synthetic-write-fixture': b'c'*32}, state_key=b'r'*32,
+        initialize=True)
+
+    def authenticated_call(method, request):
+        caller_id = 'synthetic-write-fixture'
+        mac = request_mac(b'c'*32, caller_id, request)
+        envelope = method(caller_id=caller_id, request=request, mac=mac)
+        return verify_response(b'c'*32, envelope)
 
     def witnessed_effect():
-        permit = witness.issue(ledger_id=str(intent.ledger_id),
-            invocation_id=invocation_id, intent_sha256=intent_digest(intent))
-        witness.consume(permit, ledger_id=str(intent.ledger_id),
-            invocation_id=invocation_id, intent_sha256=intent_digest(intent))
+        binding = {'operation': 'reserve', 'request_id': invocation_id,
+            'ledger_id': str(intent.ledger_id), 'invocation_id': invocation_id,
+            'intent_sha256': intent_digest(intent)}
+        permit = authenticated_call(witness.reserve, binding)
+        consume = {'operation': 'consume', **{key: permit[key] for key in
+            ('request_id','ledger_id','invocation_id','intent_sha256','generation','nonce')},
+            'ticket_mac': permit['ticket_mac']}
+        authenticated_call(witness.consume, consume)
         return run(invocation_id, intent, directory)
 
     witnessed_effect()
+    # A new process/object sees the durable consumed state before restores.
+    witness = DurableLocalRecoveryWitness(witness_path,
+        caller_keys={'synthetic-write-fixture': b'c'*32}, state_key=b'r'*32)
     if rollback in ('control', 'both'):
         with session_factory()() as db:
             db.delete(db.get(SyntheticWriteAdmission, invocation_id))
@@ -321,7 +337,7 @@ def test_live_witness_blocks_single_or_joint_store_rollback(authenticated, tmp_p
     if rollback in ('ledger', 'both'):
         (directory/'ledger.sqlite3').unlink()
 
-    with pytest.raises(RecoveryWitnessDenied, match='already consumed'):
+    with pytest.raises(WitnessDenied, match='consumed'):
         witnessed_effect()
     if rollback in ('control', 'both'):
         with session_factory()() as db:
