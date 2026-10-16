@@ -8,8 +8,10 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import re
 import sqlite3
+import stat
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -107,7 +109,9 @@ class DurableLocalRecoveryWitness:
         self._available = True
         if initialize:
             self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            self._validate_private_path(allow_missing=True)
             self.path.touch(mode=0o600, exist_ok=False)
+            self._validate_private_path()
             with self._connect() as db:
                 db.executescript('''
                     CREATE TABLE witness_state (
@@ -144,16 +148,39 @@ class DurableLocalRecoveryWitness:
                         generation INTEGER NOT NULL
                     );
                 ''')
-        elif not self.path.is_file():
-            raise WitnessDenied('witness state unavailable')
         else:
             try:
                 with self._connect() as db:
                     state = db.execute('SELECT generation FROM witness_state WHERE singleton=1').fetchone()
-                    if state is None:
+                    if (state is None or type(state['generation']) is not int or
+                            not 1 <= state['generation'] <= _MAX_GENERATION):
                         raise WitnessDenied('witness state unavailable')
+                    db.execute('SELECT request_id,caller_id,caller_key_id,state_key_id '
+                        'FROM witness_events LIMIT 0')
+                    db.execute('SELECT request_id,caller_id,generation,state_key_id,consumed '
+                        'FROM reservations LIMIT 0')
+                    db.execute('SELECT request_id,caller_id,generation '
+                        'FROM generation_operations LIMIT 0')
             except (sqlite3.Error, OSError):
                 raise WitnessDenied('witness state unavailable') from None
+
+    def _validate_private_path(self, allow_missing=False):
+        try:
+            parent = self.path.parent.lstat()
+            if (not stat.S_ISDIR(parent.st_mode) or parent.st_uid != os.getuid() or
+                    stat.S_IMODE(parent.st_mode) != 0o700):
+                raise WitnessDenied('private witness state directory required')
+            try:
+                info = self.path.lstat()
+            except FileNotFoundError:
+                if allow_missing:
+                    return
+                raise WitnessDenied('witness state unavailable') from None
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or
+                    stat.S_IMODE(info.st_mode) != 0o600):
+                raise WitnessDenied('private witness state file required')
+        except OSError:
+            raise WitnessDenied('witness state unavailable') from None
 
     def set_available(self, value):
         if type(value) is not bool:
@@ -161,6 +188,7 @@ class DurableLocalRecoveryWitness:
         self._available = value
 
     def _connect(self):
+        self._validate_private_path()
         db = sqlite3.connect(self.path, timeout=2, isolation_level=None)
         db.row_factory = sqlite3.Row
         db.execute('PRAGMA foreign_keys=ON')
