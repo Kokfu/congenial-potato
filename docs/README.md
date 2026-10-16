@@ -103,6 +103,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 95. [Witness trust-boundary lifecycle and prerequisites](research/witness-trust-boundary-lifecycle.md)
 96. [Caller-key rotation at fake effect boundary](research/witness-rotation-effect-boundary-validation.md)
 97. [State-key rotation at fake effect boundary](research/witness-state-rotation-effect-boundary-validation.md)
+98. [Pending state-key restore at fake effect boundary](research/witness-pending-state-key-restore-validation.md)
 
 ## Architecture
 
