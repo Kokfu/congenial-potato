@@ -1223,3 +1223,66 @@ def test_empty_mac_unknown_key_rpc_denies_before_commit(tmp_path, operation):
         assert db.execute('SELECT count(*) FROM reservations').fetchone()[0] == 1
         assert db.execute('SELECT event FROM witness_events ORDER BY sequence').fetchall() == [
             ('reserved',), ('consumed',)]
+
+
+@pytest.mark.skipif(not hasattr(socket, 'SO_PEERCRED'),
+    reason='local peer credential transport requires Linux SO_PEERCRED')
+@pytest.mark.parametrize('operation', ['reserve', 'consume', 'advance'])
+def test_retired_caller_key_empty_mac_cannot_mutate_after_process_restart(operation):
+    with TemporaryDirectory(prefix='witness-retired-') as private:
+        root = Path(private)
+        state_path = root/'state'/'witness.sqlite3'
+        old_key, new_key = CALLER_KEY, b'n'*32
+        DurableLocalRecoveryWitness(state_path,
+            caller_keys={CALLER: {'caller-v1': old_key, 'caller-v2': new_key}},
+            current_caller_key_ids={CALLER: 'caller-v2'}, state_key=STATE_KEY,
+            advance_callers={CALLER}, initialize=True)
+        config = {'socket_path': str(root/'w.sock'), 'state_path': str(state_path),
+            'caller_keyrings': {CALLER: {'caller-v1': old_key.hex(), 'caller-v2': new_key.hex()}},
+            'current_caller_key_ids': {CALLER: 'caller-v2'},
+            'advance_callers': [CALLER], 'state_key': STATE_KEY.hex()}
+        config_path = root/'config.json'
+        config_path.write_text(json.dumps(config)); config_path.chmod(0o600)
+        old = UnixWitnessClient(config['socket_path'], caller_id=CALLER, key=old_key)
+        reserve = {'operation': 'reserve', 'request_id': str(uuid4()),
+            'ledger_id': str(uuid4()), 'invocation_id': str(uuid4()),
+            'intent_sha256': 'b'*64}
+        server = start_server(config_path)
+        try:
+            assert old.request({'operation': 'advance', 'request_id': str(uuid4())})['generation'] == 2
+            permit = old.request(reserve)
+        finally:
+            stop_server(server)
+        consume = {'operation': 'consume', **{name: permit[name] for name in
+            ('request_id', 'ledger_id', 'invocation_id', 'intent_sha256',
+             'generation', 'state_key_id', 'nonce', 'ticket_mac')}}
+        config['caller_keyrings'] = {CALLER: {'caller-v2': new_key.hex()}}
+        config_path.write_text(json.dumps(config)); config_path.chmod(0o600)
+        server = start_server(config_path)
+        try:
+            before = state_path.read_bytes()
+            with pytest.raises(WitnessTransportDenied):
+                old.request({'operation': 'generation'})
+            request = {'reserve': {**reserve, 'request_id': str(uuid4()),
+                    'invocation_id': str(uuid4())}, 'consume': consume,
+                'advance': {'operation': 'advance', 'request_id': str(uuid4())}}[operation]
+            frame = {'caller_id': CALLER, 'caller_key_id': 'caller-v1',
+                'request': request, 'exchange_nonce': str(uuid4()), 'mac': ''}
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+                connection.settimeout(2)
+                connection.connect(config['socket_path'])
+                connection.sendall(json.dumps(frame).encode('ascii') + b'\n')
+                assert json.loads(transport_module._read_frame(connection)) == {'error': 'denied'}
+            assert state_path.read_bytes() == before
+            replacement = UnixWitnessClient(config['socket_path'], caller_id=CALLER,
+                keys={'caller-v2': new_key}, current_key_id='caller-v2')
+            assert replacement.request({'operation': 'generation'})['generation'] == 2
+            assert replacement.request(consume)['status'] == 'spent'
+        finally:
+            stop_server(server)
+        with sqlite3.connect(state_path) as db:
+            assert db.execute('SELECT count(*) FROM reservations').fetchone()[0] == 1
+            assert db.execute('SELECT generation FROM witness_state').fetchone()[0] == 2
+            assert db.execute('SELECT event,caller_key_id FROM witness_events ORDER BY sequence').fetchall() == [
+                ('generation_advanced', 'caller-v1'), ('reserved', 'caller-v1'),
+                ('consumed', 'caller-v2')]
