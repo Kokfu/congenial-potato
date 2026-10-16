@@ -72,7 +72,7 @@ if mode == 'reserve-consume':
     retry=client.request(request)
     assert first == retry
     consume={'operation':'consume',**{key:first[key] for key in
-        ('request_id','ledger_id','invocation_id','intent_sha256','generation','nonce')},
+        ('request_id','ledger_id','invocation_id','intent_sha256','generation','state_key_id','nonce')},
         'ticket_mac':first['ticket_mac']}
     result=client.request(consume)
     print(json.dumps({'first':first,'retry':retry,'consumed':result},sort_keys=True))

@@ -44,7 +44,8 @@ def reserve_and_consume(witness, intent):
         'intent_sha256': intent_digest(intent)}
     permit = authenticated(witness.reserve, reserve)
     consume = {'operation': 'consume', **{key: permit[key] for key in
-        ('request_id','ledger_id','invocation_id','intent_sha256','generation','nonce')},
+        ('request_id','ledger_id','invocation_id','intent_sha256','generation',
+         'state_key_id','nonce')},
         'ticket_mac': permit['ticket_mac']}
     authenticated(witness.consume, consume)
 
@@ -115,7 +116,8 @@ def test_lost_consume_reply_burns_invocation_before_control_or_fake_ledger(tmp_p
         'intent_sha256': intent_digest(intent)}
     permit = authenticated(witness.reserve, reserve)
     consume = {'operation': 'consume', **{key: permit[key] for key in
-        ('request_id','ledger_id','invocation_id','intent_sha256','generation','nonce')},
+        ('request_id','ledger_id','invocation_id','intent_sha256','generation',
+         'state_key_id','nonce')},
         'ticket_mac': permit['ticket_mac']}
     witness.consume(caller_id=CALLER, request=consume,
         mac=request_mac(CALLER_KEY, CALLER, consume))  # lose reply after durable commit

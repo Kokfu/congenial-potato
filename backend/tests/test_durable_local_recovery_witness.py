@@ -45,7 +45,8 @@ def reserve_request(*, request_id=None, invocation_id=None, ledger_id=LEDGER, in
 
 def consume_request(reservation):
     return {'operation': 'consume', **{key: reservation[key] for key in
-            ('request_id','ledger_id','invocation_id','intent_sha256','generation','nonce')},
+            ('request_id','ledger_id','invocation_id','intent_sha256','generation',
+             'state_key_id','nonce')},
             'ticket_mac': reservation['ticket_mac']}
 
 
@@ -238,6 +239,57 @@ def test_authenticated_non_admin_caller_cannot_advance_generation(tmp_path):
     assert call(witness, {'operation': 'generation'})['generation'] == 1
     with sqlite3.connect(witness.path) as db:
         assert db.execute('SELECT count(*) FROM generation_operations').fetchone()[0] == 0
+
+
+def test_state_key_rotation_keeps_old_reservations_during_overlap(tmp_path):
+    path = tmp_path/'witness.sqlite3'
+    old_key, new_key = b'1'*32, b'2'*32
+    witness = DurableLocalRecoveryWitness(path, caller_keys={CALLER: CALLER_KEY},
+        state_key=old_key, advance_callers={CALLER}, initialize=True)
+    old_request = reserve_request()
+    old_ticket = call(witness, old_request)
+    rotated = DurableLocalRecoveryWitness(path, caller_keys={CALLER: CALLER_KEY},
+        state_keys={'state-v1': old_key, 'state-v2': new_key},
+        current_state_key_id='state-v2', advance_callers={CALLER})
+    assert call(rotated, old_request) == old_ticket
+    new_request = reserve_request()
+    new_ticket = call(rotated, new_request)
+    assert old_ticket['state_key_id'] == 'state-v1'
+    assert new_ticket['state_key_id'] == 'state-v2'
+    assert call(rotated, consume_request(old_ticket))['status'] == 'spent'
+    assert call(rotated, consume_request(new_ticket))['status'] == 'spent'
+
+
+def test_retiring_state_key_with_pending_reservation_fails_closed_until_restored(tmp_path):
+    path = tmp_path/'witness.sqlite3'
+    old_key, new_key = b'3'*32, b'4'*32
+    witness = DurableLocalRecoveryWitness(path, caller_keys={CALLER: CALLER_KEY},
+        state_key=old_key, advance_callers={CALLER}, initialize=True)
+    reservation = call(witness, reserve_request())
+    premature_retirement = DurableLocalRecoveryWitness(path,
+        caller_keys={CALLER: CALLER_KEY}, state_keys={'state-v2': new_key},
+        current_state_key_id='state-v2', advance_callers={CALLER})
+    consume = consume_request(reservation)
+    with pytest.raises(WitnessDenied, match='state key unavailable'):
+        call(premature_retirement, consume)
+    overlap = DurableLocalRecoveryWitness(path, caller_keys={CALLER: CALLER_KEY},
+        state_keys={'state-v1': old_key, 'state-v2': new_key},
+        current_state_key_id='state-v2', advance_callers={CALLER})
+    assert call(overlap, consume)['status'] == 'spent'
+
+
+def test_retired_key_is_not_needed_to_keep_consumed_identity_spent(tmp_path):
+    path = tmp_path/'witness.sqlite3'
+    old_key, new_key = b'5'*32, b'6'*32
+    witness = DurableLocalRecoveryWitness(path, caller_keys={CALLER: CALLER_KEY},
+        state_key=old_key, advance_callers={CALLER}, initialize=True)
+    reservation = call(witness, reserve_request())
+    call(witness, consume_request(reservation))
+    retired = DurableLocalRecoveryWitness(path, caller_keys={CALLER: CALLER_KEY},
+        state_keys={'state-v2': new_key}, current_state_key_id='state-v2',
+        advance_callers={CALLER})
+    with pytest.raises(WitnessDenied, match='already consumed'):
+        call(retired, reserve_request(invocation_id=reservation['invocation_id']))
 
 
 def test_restoring_app_and_fake_ledger_fixtures_does_not_restore_separate_witness_file(tmp_path):

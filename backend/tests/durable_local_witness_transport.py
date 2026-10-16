@@ -191,10 +191,17 @@ def serve_config(path):
             stat.S_IMODE(info.st_mode) != 0o600):
         raise WitnessTransportDenied('private witness config required')
     config = json.loads(config_path.read_text())
-    witness = DurableLocalRecoveryWitness(config['state_path'],
-        caller_keys={name: bytes.fromhex(value) for name, value in config['caller_keys'].items()},
-        state_key=bytes.fromhex(config['state_key']),
-        advance_callers=frozenset(config.get('advance_callers', [])))
+    witness_config = {
+        'caller_keys': {name: bytes.fromhex(value) for name, value in config['caller_keys'].items()},
+        'advance_callers': frozenset(config.get('advance_callers', [])),
+    }
+    if 'state_keys' in config:
+        witness_config['state_keys'] = {name: bytes.fromhex(value)
+                                        for name, value in config['state_keys'].items()}
+        witness_config['current_state_key_id'] = config['current_state_key_id']
+    else:
+        witness_config['state_key'] = bytes.fromhex(config['state_key'])
+    witness = DurableLocalRecoveryWitness(config['state_path'], **witness_config)
     server = LocalWitnessUnixServer(witness, config['socket_path']).start()
     try:
         while True:
