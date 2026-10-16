@@ -483,7 +483,15 @@ def test_lost_consume_reply_remains_spent_after_server_restart(tmp_path):
     args = [sys.executable,'-c',client_program(),str(client_config_path)]
     client_env = dict(os.environ)
     client_env['PYTHONPATH'] = str(Path(transport_module.__file__).parent) + os.pathsep + client_env.get('PYTHONPATH','')
-    invocation, ledger, digest = str(uuid4()), str(uuid4()), 'b'*64
+    content = b'lost reply fixture body'
+    ledger_id = uuid4()
+    intent = SyntheticWriteIntent(version=1, action='synthetic.record.replace',
+        scope=WriteScope(project_id=uuid4(), agent_id=uuid4(), root_id=uuid4(),
+            invocation_id=uuid4()), ledger_id=ledger_id, record_id=uuid4(),
+        expected_revision=0, content_sha256=hashlib.sha256(content).hexdigest(),
+        content_size=len(content), approval_payload_sha256='a'*64,
+        policy_snapshot_sha256='b'*64)
+    invocation, ledger, digest = str(intent.scope.invocation_id), str(ledger_id), intent_digest(intent)
     server = start_server(config_path)
     try:
         reserve = subprocess.run(args+[invocation,ledger,digest,'reserve-only'],
@@ -519,6 +527,14 @@ def test_lost_consume_reply_remains_spent_after_server_restart(tmp_path):
                 (invocation,)).fetchone()[0] == 1
             assert db.execute("SELECT count(*) FROM witness_events "
                 "WHERE event='consumed'").fetchone()[0] == 1
+        # A lost consume reply leaves the caller uncertain, so this harness does not enter the effect.
+        ledger_dir = tmp_path/'ledger-fixture'
+        ledger_dir.mkdir(mode=0o700)
+        fake_ledger = SyntheticWriteLedger(ledger_dir, ledger_id=ledger_id,
+            key=b'l'*32, experiment_enabled=True)
+        with sqlite3.connect(fake_ledger.path) as db:
+            assert db.execute('SELECT count(*) FROM records').fetchone()[0] == 0
+            assert db.execute('SELECT count(*) FROM attempts').fetchone()[0] == 0
     finally:
         stop_server(restarted)
 
