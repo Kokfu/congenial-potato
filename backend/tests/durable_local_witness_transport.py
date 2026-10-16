@@ -85,7 +85,8 @@ class UnixWitnessClient:
         if type(response) is not dict or set(response) == {'error'}:
             raise WitnessTransportDenied('witness request denied or response unavailable')
         try:
-            return verify_response(key, response, self.current_key_id)
+            return verify_response(key, response, self.current_key_id,
+                expected_request_mac=frame['mac'])
         except WitnessDenied:
             raise WitnessTransportDenied('witness response authentication failed') from None
 

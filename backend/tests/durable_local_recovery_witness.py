@@ -17,7 +17,7 @@ from uuid import UUID, uuid4
 
 
 _REQUEST_DOMAIN = b'workforce.synthetic.write.witness.request.v1\0'
-_RESPONSE_DOMAIN = b'workforce.synthetic.write.witness.response.v1\0'
+_RESPONSE_DOMAIN = b'workforce.synthetic.write.witness.response.v2\0'
 _TICKET_DOMAIN = b'workforce.synthetic.write.witness.ticket.v1\0'
 _MAX_GENERATION = 2**63 - 1
 
@@ -52,16 +52,23 @@ def request_mac(key: bytes, caller_id: str, request: dict, key_id='caller-v1') -
                        _canonical(request), 'sha256').hex()
 
 
-def verify_response(key: bytes, envelope: dict, key_id='caller-v1') -> dict:
-    """Verify response authenticity before interpreting the returned state."""
-    if type(envelope) is not dict or set(envelope) != {'body', 'key_id', 'mac'} or envelope['key_id'] != key_id:
+def verify_response(key: bytes, envelope: dict, key_id='caller-v1', *, expected_request_mac=None) -> dict:
+    """Authenticate a response; callers with an outstanding request must bind it."""
+    if type(envelope) is not dict or set(envelope) != {'body', 'key_id', 'request_mac', 'mac'} or envelope['key_id'] != key_id:
         raise WitnessDenied('witness response unavailable')
     body, mac = envelope['body'], envelope['mac']
     if type(body) is not dict or type(mac) is not str or re.fullmatch(r'[0-9a-f]{64}', mac) is None:
         raise WitnessDenied('witness response unavailable')
-    expected = hmac.digest(key, _RESPONSE_DOMAIN + key_id.encode() + b'\0' + _canonical(body), 'sha256').hex()
+    binding = envelope['request_mac']
+    if type(binding) is not str or re.fullmatch(r'[0-9a-f]{64}', binding) is None:
+        raise WitnessDenied('witness response binding unavailable')
+    message = {'body': body, 'request_mac': binding}
+    expected = hmac.digest(key, _RESPONSE_DOMAIN + key_id.encode() + b'\0' + _canonical(message), 'sha256').hex()
     if not hmac.compare_digest(expected, mac):
         raise WitnessDenied('witness response authentication failed')
+    if expected_request_mac is not None and (type(expected_request_mac) is not str or
+            not hmac.compare_digest(binding, expected_request_mac)):
+        raise WitnessDenied('witness response request binding failed')
     return body
 
 
@@ -204,9 +211,10 @@ class DurableLocalRecoveryWitness:
         return key
 
     @staticmethod
-    def _envelope(key, body, key_id='caller-v1'):
-        mac = hmac.digest(key, _RESPONSE_DOMAIN + key_id.encode() + b'\0' + _canonical(body), 'sha256').hex()
-        return {'body': body, 'key_id': key_id, 'mac': mac}
+    def _envelope(key, body, key_id='caller-v1', *, request_binding):
+        message = {'body': body, 'request_mac': request_binding}
+        mac = hmac.digest(key, _RESPONSE_DOMAIN + key_id.encode() + b'\0' + _canonical(message), 'sha256').hex()
+        return {**message, 'key_id': key_id, 'mac': mac}
 
     def _ticket_mac(self, generation, ledger_id, invocation_id, intent_sha256, nonce,
                     state_key_id):
@@ -234,7 +242,8 @@ class DurableLocalRecoveryWitness:
                 row = db.execute('SELECT generation FROM witness_state WHERE singleton=1').fetchone()
                 if row is None:
                     raise WitnessDenied('witness state unavailable')
-                return self._envelope(key, {'generation': row['generation'], 'status': 'current'}, caller_key_id)
+                return self._envelope(key, {'generation': row['generation'], 'status': 'current'}, caller_key_id,
+                    request_binding=mac)
         except (sqlite3.Error, OSError):
             raise WitnessDenied('witness state unavailable') from None
 
@@ -260,7 +269,7 @@ class DurableLocalRecoveryWitness:
                         raise WitnessDenied('witness reservation conflict or consumed invocation')
                     body = self._reservation_body(old)
                     db.commit()
-                    return self._envelope(key, body, caller_key_id)
+                    return self._envelope(key, body, caller_key_id, request_binding=mac)
                 by_invocation = db.execute('SELECT * FROM reservations WHERE invocation_id=?', (invocation_id,)).fetchone()
                 if by_invocation:
                     if by_invocation['consumed']:
@@ -278,7 +287,7 @@ class DurableLocalRecoveryWitness:
                 row = db.execute('SELECT * FROM reservations WHERE request_id=?', (request_id,)).fetchone()
                 body = self._reservation_body(row)
                 db.commit()
-                return self._envelope(key, body, caller_key_id)
+                return self._envelope(key, body, caller_key_id, request_binding=mac)
         except WitnessDenied:
             raise
         except (sqlite3.Error, OSError):
@@ -335,7 +344,7 @@ class DurableLocalRecoveryWitness:
                 db.commit()
                 body = {'status': 'spent', 'generation': row['generation'],
                         'request_id': request_id, 'invocation_id': invocation_id}
-                return self._envelope(key, body, caller_key_id)
+                return self._envelope(key, body, caller_key_id, request_binding=mac)
         except WitnessDenied:
             raise
         except (sqlite3.Error, OSError):
@@ -359,7 +368,7 @@ class DurableLocalRecoveryWitness:
                         raise WitnessDenied('witness generation operation conflict')
                     db.commit()
                     return self._envelope(key, {'generation': previous['generation'],
-                        'request_id': request_id, 'status': 'advanced'}, caller_key_id)
+                        'request_id': request_id, 'status': 'advanced'}, caller_key_id, request_binding=mac)
                 row = db.execute('SELECT generation FROM witness_state WHERE singleton=1').fetchone()
                 if row is None or row['generation'] >= _MAX_GENERATION:
                     raise WitnessDenied('witness generation unavailable')
@@ -372,7 +381,7 @@ class DurableLocalRecoveryWitness:
                     caller_id, caller_key_id)
                 db.commit()
                 return self._envelope(key, {'generation': generation,
-                    'request_id': request_id, 'status': 'advanced'}, caller_key_id)
+                    'request_id': request_id, 'status': 'advanced'}, caller_key_id, request_binding=mac)
         except WitnessDenied:
             raise
         except (sqlite3.Error, OSError):

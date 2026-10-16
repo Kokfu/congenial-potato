@@ -18,9 +18,10 @@ class PendingSnapshotAuditRollbackTests(unittest.TestCase):
         state_key = b's' * 32
 
         def authenticated(method, request):
+            mac = request_mac(caller_key, caller, request)
             envelope = method(caller_id=caller, request=request,
-                mac=request_mac(caller_key, caller, request))
-            verify_response(caller_key, envelope)
+                mac=mac)
+            verify_response(caller_key, envelope, expected_request_mac=mac)
             return envelope
 
         def audit_rows(path):

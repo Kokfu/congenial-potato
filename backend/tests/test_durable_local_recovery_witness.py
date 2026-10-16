@@ -23,7 +23,8 @@ INTENT = 'a' * 64
 
 def call(witness, request, *, key=CALLER_KEY, caller=CALLER, key_id='caller-v1'):
     envelope = dispatch(witness, request, caller=caller, key=key, key_id=key_id)
-    return verify_response(key, envelope, key_id)
+    return verify_response(key, envelope, key_id,
+        expected_request_mac=request_mac(key, caller, request, key_id))
 
 
 def dispatch(witness, request, *, caller=CALLER, key=CALLER_KEY, key_id='caller-v1'):
