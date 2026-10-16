@@ -259,6 +259,33 @@ def test_concurrent_duplicate_generation_advance_increments_once(tmp_path):
     assert call(reopen(path), {'operation': 'generation'})['generation'] == 2
 
 
+def test_overlapping_admin_keys_racing_same_advance_are_idempotent(tmp_path):
+    path = tmp_path/'witness.sqlite3'
+    old_key, new_key = CALLER_KEY, b'r'*32
+    DurableLocalRecoveryWitness(path, caller_keys={CALLER:old_key},
+        state_key=STATE_KEY, advance_callers={CALLER}, initialize=True)
+    overlap = DurableLocalRecoveryWitness(path,
+        caller_keys={CALLER:{'caller-v1':old_key,'caller-v2':new_key}},
+        current_caller_key_ids={CALLER:'caller-v2'}, state_key=STATE_KEY,
+        advance_callers={CALLER})
+    request = {'operation':'advance','request_id':str(uuid4())}
+    barrier = Barrier(2)
+    def attempt(key, key_id):
+        barrier.wait(timeout=3)
+        return call(overlap, request, key=key, key_id=key_id)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        replies = list(pool.map(lambda pair: attempt(*pair),
+            [(old_key,'caller-v1'),(new_key,'caller-v2')]))
+    assert replies == [{'generation':2,'request_id':request['request_id'],
+        'status':'advanced'}]*2
+    assert call(reopen(path), {'operation':'generation'})['generation'] == 2
+    with sqlite3.connect(path) as db:
+        assert db.execute('SELECT count(*) FROM generation_operations').fetchone()[0] == 1
+        events = db.execute("SELECT caller_key_id FROM witness_events "
+            "WHERE event='generation_advanced'").fetchall()
+    assert len(events) == 1 and events[0][0] in {'caller-v1','caller-v2'}
+
+
 def test_authenticated_non_admin_caller_cannot_advance_generation(tmp_path):
     witness = DurableLocalRecoveryWitness(tmp_path/'witness.sqlite3',
         caller_keys={CALLER: CALLER_KEY, 'ordinary-caller': b'o'*32},
