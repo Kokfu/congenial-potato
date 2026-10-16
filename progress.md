@@ -14,6 +14,8 @@ Updated: 2026-10-16. This is the execution ledger for the approved AI workforce 
 
 Phase 8.4ag: a fixture restores a prior witness database after generation reaches 3 and observes generation 1, explicitly demonstrating that monotonicity is not protected against local file rollback. Evidence: `docs/research/witness-generation-rollback-boundary-validation.md`.
 
+Phase 8.4ah: restoring pre-effect copies of the local witness, control fixture, and fake ledger permits the same intent to be admitted and applied again, producing a second distinct fake event ID; this confirms the local prototype cannot resist coordinated rollback of all its fixtures. Evidence: `docs/research/witness-coordinated-full-rollback-effect-validation.md`.
+
 ## Phase 1 tasks
 
 - [x] **1.1 Repository and persistence foundation.** Pin dependencies. Create typed FastAPI application and separate worker entry point. Add PostgreSQL models and Alembic migrations for owner/session, project, agent/config revision, task/execution, authorization/audit/outbox, root budget reservations, approvals, and immutable artifact metadata. Verify migrations on a clean database.
