@@ -147,6 +147,36 @@ def test_concurrent_consume_has_one_durable_winner(tmp_path):
     assert result.count('denied') == 7
 
 
+def test_old_and_new_caller_keys_racing_to_consume_have_one_durable_winner(tmp_path):
+    path = tmp_path/'witness.sqlite3'
+    old_key, new_key = CALLER_KEY, b'q'*32
+    initial = DurableLocalRecoveryWitness(path, caller_keys={CALLER:old_key},
+        state_key=STATE_KEY, initialize=True)
+    reservation = call(initial, reserve_request())
+    overlap = DurableLocalRecoveryWitness(path,
+        caller_keys={CALLER:{'caller-v1':old_key,'caller-v2':new_key}},
+        current_caller_key_ids={CALLER:'caller-v2'}, state_key=STATE_KEY)
+    request = consume_request(reservation)
+    barrier = Barrier(2)
+    def attempt(key, key_id):
+        barrier.wait(timeout=3)
+        try:
+            call(overlap, request, key=key, key_id=key_id)
+            return key_id, 'spent'
+        except WitnessDenied:
+            return key_id, 'denied'
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda pair: attempt(*pair),
+            [(old_key,'caller-v1'),(new_key,'caller-v2')]))
+    assert [result for _, result in results].count('spent') == 1
+    assert [result for _, result in results].count('denied') == 1
+    with sqlite3.connect(path) as db:
+        consumed = db.execute("SELECT caller_key_id FROM witness_events "
+            "WHERE event='consumed'").fetchall()
+    assert len(consumed) == 1
+    assert consumed[0][0] in {'caller-v1','caller-v2'}
+
+
 def test_authentication_response_tampering_and_outage_fail_closed(tmp_path):
     witness = create(tmp_path/'witness.sqlite3')
     request = {'operation': 'generation'}
