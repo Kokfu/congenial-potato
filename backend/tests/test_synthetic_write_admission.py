@@ -26,6 +26,8 @@ from workforce.synthetic_write_contract import (SyntheticWriteIntent,
 from synthetic_write_ledger import SyntheticWriteLedger
 from workforce.tool_approval import _digest
 from test_tool_approval import decide, proposed_write
+from synthetic_write_recovery_witness import (RecoveryWitnessDenied,
+    SimulatedMonotonicRecoveryWitness)
 
 KEY = b'w' * 32
 LEDGER_ID = UUID('5f94d899-9e2c-4f4e-9d2f-62b62102ae51')
@@ -296,3 +298,41 @@ def test_joint_control_and_ledger_restore_exposes_reexecution_gap(authenticated,
     with sqlite3.connect(directory/'ledger.sqlite3') as db:
         assert db.execute('SELECT revision FROM records').fetchone()[0] == 1
         assert db.execute('SELECT count(*) FROM attempts').fetchone()[0] == 1
+
+
+@pytest.mark.parametrize('rollback', ['control', 'ledger', 'both'])
+def test_live_witness_blocks_single_or_joint_store_rollback(authenticated, tmp_path, rollback):
+    invocation_id, intent, directory = prepared(authenticated, tmp_path)
+    witness = SimulatedMonotonicRecoveryWitness(b'r'*32)
+
+    def witnessed_effect():
+        permit = witness.issue(ledger_id=str(intent.ledger_id),
+            invocation_id=invocation_id, intent_sha256=intent_digest(intent))
+        witness.consume(permit, ledger_id=str(intent.ledger_id),
+            invocation_id=invocation_id, intent_sha256=intent_digest(intent))
+        return run(invocation_id, intent, directory)
+
+    witnessed_effect()
+    if rollback in ('control', 'both'):
+        with session_factory()() as db:
+            db.delete(db.get(SyntheticWriteAdmission, invocation_id))
+            db.delete(db.get(SyntheticWriteLedgerControl, 1))
+            db.commit()
+    if rollback in ('ledger', 'both'):
+        (directory/'ledger.sqlite3').unlink()
+
+    with pytest.raises(RecoveryWitnessDenied, match='already consumed'):
+        witnessed_effect()
+    if rollback in ('control', 'both'):
+        with session_factory()() as db:
+            assert db.get(SyntheticWriteAdmission, invocation_id) is None
+            assert db.get(SyntheticWriteLedgerControl, 1) is None
+    else:
+        with session_factory()() as db:
+            assert db.get(SyntheticWriteAdmission, invocation_id).status == 'unknown'
+    if rollback in ('ledger', 'both'):
+        assert not (directory/'ledger.sqlite3').exists()
+    else:
+        with sqlite3.connect(directory/'ledger.sqlite3') as db:
+            assert db.execute('SELECT count(*) FROM records').fetchone()[0] == 1
+            assert db.execute('SELECT count(*) FROM attempts').fetchone()[0] == 1
