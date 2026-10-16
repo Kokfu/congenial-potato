@@ -91,6 +91,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 83. [Local witness server configuration](research/witness-server-config-validation.md)
 84. [Local witness state-key rotation across processes](research/witness-state-process-key-rotation-validation.md)
 85. [Caller-key rotation consume concurrency](research/witness-rotation-consume-concurrency-validation.md)
+86. [Recovery-admin key rotation concurrency](research/witness-admin-key-race-validation.md)
 
 ## Architecture
 
