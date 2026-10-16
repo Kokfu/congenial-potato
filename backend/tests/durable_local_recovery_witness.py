@@ -106,6 +106,11 @@ class DurableLocalRecoveryWitness:
                         invocation_id TEXT,
                         binding_sha256 TEXT NOT NULL
                     );
+                    CREATE TABLE generation_operations (
+                        request_id TEXT PRIMARY KEY,
+                        caller_id TEXT NOT NULL,
+                        generation INTEGER NOT NULL
+                    );
                 ''')
         elif not self.path.is_file():
             raise WitnessDenied('witness state unavailable')
@@ -261,19 +266,33 @@ class DurableLocalRecoveryWitness:
 
     def advance_generation(self, *, caller_id, request, mac):
         key = self._authenticate(caller_id, request, mac)
-        if type(request) is not dict or set(request) != {'operation'} or request.get('operation') != 'advance':
+        if (type(request) is not dict or set(request) != {'operation','request_id'} or
+                request.get('operation') != 'advance'):
             raise WitnessDenied('witness request unavailable')
+        request_id = _identity(request['request_id'], 'generation operation identity')
         try:
             with self._connect() as db:
                 db.execute('BEGIN IMMEDIATE')
+                previous = db.execute('SELECT * FROM generation_operations WHERE request_id=?',
+                    (request_id,)).fetchone()
+                if previous is not None:
+                    if previous['caller_id'] != caller_id:
+                        raise WitnessDenied('witness generation operation conflict')
+                    db.commit()
+                    return self._envelope(key, {'generation': previous['generation'],
+                        'request_id': request_id, 'status': 'advanced'})
                 row = db.execute('SELECT generation FROM witness_state WHERE singleton=1').fetchone()
                 if row is None or row['generation'] >= _MAX_GENERATION:
                     raise WitnessDenied('witness generation unavailable')
                 generation = row['generation'] + 1
                 db.execute('UPDATE witness_state SET generation=? WHERE singleton=1', (generation,))
-                self._record(db, 'generation_advanced', generation, None, None, {'generation': generation})
+                db.execute('INSERT INTO generation_operations VALUES (?,?,?)',
+                    (request_id, caller_id, generation))
+                self._record(db, 'generation_advanced', generation, request_id, None,
+                    {'request_id': request_id, 'generation': generation})
                 db.commit()
-                return self._envelope(key, {'generation': generation, 'status': 'current'})
+                return self._envelope(key, {'generation': generation,
+                    'request_id': request_id, 'status': 'advanced'})
         except WitnessDenied:
             raise
         except (sqlite3.Error, OSError):

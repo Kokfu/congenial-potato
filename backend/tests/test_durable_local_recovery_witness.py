@@ -77,7 +77,7 @@ def test_restart_preserves_generation_reservation_and_consumed_state(tmp_path):
     witness = create(path)
     reservation = call(witness, reserve_request())
     assert call(witness, {'operation': 'consume', **consume_request(reservation)})['status'] == 'spent'
-    advanced = call(witness, {'operation': 'advance'})
+    advanced = call(witness, {'operation': 'advance', 'request_id': str(uuid4())})
     assert advanced['generation'] == 2
     restarted = reopen(path)
     assert call(restarted, {'operation': 'generation'})['generation'] == 2
@@ -180,9 +180,51 @@ def test_generation_advance_stales_unconsumed_ticket_and_never_rewinds(tmp_path)
     path = tmp_path/'witness.sqlite3'
     witness = create(path)
     reservation = call(witness, reserve_request())
-    call(witness, {'operation': 'advance'})
+    call(witness, {'operation': 'advance', 'request_id': str(uuid4())})
     with pytest.raises(WitnessDenied, match='ticket binding'):
         call(witness, consume_request(reservation))
+    assert call(reopen(path), {'operation': 'generation'})['generation'] == 2
+
+
+def test_generation_advance_retry_is_idempotent_after_lost_reply_and_restart(tmp_path):
+    path = tmp_path/'witness.sqlite3'
+    witness = create(path)
+    request = {'operation': 'advance', 'request_id': str(uuid4())}
+    lost = dispatch(witness, request)  # response is dropped after durable commit
+    retry = call(reopen(path), request)
+    assert verify_response(CALLER_KEY, lost) == retry
+    assert retry['generation'] == 2
+    second = call(reopen(path), {'operation': 'advance', 'request_id': str(uuid4())})
+    assert second['generation'] == 3
+    assert call(reopen(path), request) == retry
+    with sqlite3.connect(path) as db:
+        assert db.execute('SELECT count(*) FROM generation_operations').fetchone()[0] == 2
+
+
+def test_generation_advance_rejects_request_identity_reuse_by_other_caller(tmp_path):
+    path = tmp_path/'witness.sqlite3'
+    witness = DurableLocalRecoveryWitness(path,
+        caller_keys={CALLER: CALLER_KEY, 'other-caller': b'o'*32},
+        state_key=STATE_KEY, initialize=True)
+    request = {'operation': 'advance', 'request_id': str(uuid4())}
+    assert call(witness, request)['generation'] == 2
+    with pytest.raises(WitnessDenied, match='operation conflict'):
+        dispatch(witness, request, caller='other-caller', key=b'o'*32)
+    assert call(witness, {'operation': 'generation'})['generation'] == 2
+
+
+def test_concurrent_duplicate_generation_advance_increments_once(tmp_path):
+    path = tmp_path/'witness.sqlite3'
+    witness = create(path)
+    request = {'operation': 'advance', 'request_id': str(uuid4())}
+    barrier = Barrier(8)
+    def attempt(_):
+        barrier.wait(timeout=3)
+        return call(witness, request)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        replies = list(pool.map(attempt, range(8)))
+    assert len(set(tuple(sorted(reply.items())) for reply in replies)) == 1
+    assert replies[0]['generation'] == 2
     assert call(reopen(path), {'operation': 'generation'})['generation'] == 2
 
 
