@@ -13,7 +13,7 @@ from typing import Literal
 from pydantic import Field, field_validator
 
 from .reviewed_runner_contract import (PROFILE, RunnerContractError, RunnerScope, _StrictModel,
-    _canonical, _parse, _utc, verify_runner_manifest)
+    _canonical, _parse, _utc, pinned_runner_manifest)
 from .runner_admission import RunnerAdmission
 from .runner_fixture_job import RunnerReceipt, canonical_receipt, verify_runner_receipt
 
@@ -47,7 +47,7 @@ class _ResultEnvelope(_StrictModel):
     signature: str = Field(pattern=r'^[0-9a-f]{64}$')
 
 
-def _context(admission, key):
+def _context(admission, key, *, current=True):
     if (type(admission) is not RunnerAdmission or type(key) is not bytes or len(key) != 32
             or type(admission.capability) is not bytes or len(admission.capability) != 32
             or hmac.compare_digest(key, admission.capability)
@@ -56,10 +56,12 @@ def _context(admission, key):
             or not isinstance(admission.job_sha256, str)
             or not re.fullmatch(r'[0-9a-f]{64}', admission.job_sha256)):
         raise RunnerContractError('Private runner result configuration unavailable')
-    manifest = verify_runner_manifest(admission.manifest_raw,
+    manifest = pinned_runner_manifest(admission.manifest_raw,
                                       expected_sha256=admission.manifest_sha256)
     if str(manifest.scope.attempt_id) != admission.invocation_id:
         raise RunnerContractError('Runner result admission unavailable')
+    if current:
+        manifest.current()
     return manifest
 
 
@@ -67,15 +69,21 @@ def _wire(payload):
     return _RESULT_DOMAIN + _canonical(payload.model_dump(mode='json')).encode('utf-8')
 
 
-def _bound(payload, admission, manifest):
+def _bound(payload, admission, manifest, *, current=True):
     if (payload.scope != manifest.scope or payload.image_id != admission.image_id or
             payload.admission_sha256 != hashlib.sha256(admission.capability).hexdigest() or
             not manifest.issued_at <= payload.completed_at <= datetime.now(timezone.utc) or
             payload.completed_at >= manifest.expires_at):
         raise RunnerContractError('Runner result bindings unavailable')
-    verify_runner_receipt(canonical_receipt(payload.receipt), manifest,
-                          expected_job_sha256=admission.job_sha256)
-    manifest.current()
+    canonical_receipt(payload.receipt)  # revalidate copied receipt models
+    receipt = payload.receipt
+    if (receipt.manifest_sha256 != admission.manifest_sha256 or
+            receipt.profile_sha256 != manifest.profile_sha256 or
+            receipt.job_sha256 != admission.job_sha256 or
+            receipt.input_sha256 != manifest.input_sha256 or receipt.input_size != manifest.input_size):
+        raise RunnerContractError('Runner result receipt bindings unavailable')
+    if current:
+        manifest.current()
 
 
 def sign_runner_result(raw_receipt: str, admission: RunnerAdmission, *, key: bytes,
@@ -99,7 +107,16 @@ def sign_runner_result(raw_receipt: str, admission: RunnerAdmission, *, key: byt
 
 
 def verify_runner_result(raw: str, admission: RunnerAdmission, *, key: bytes) -> RunnerResultPayload:
-    manifest = _context(admission, key)
+    return _verify_result(raw, admission, key=key, current=True)
+
+
+def pinned_runner_result(raw: str, admission: RunnerAdmission, *, key: bytes) -> RunnerResultPayload:
+    """Authenticate historical identity only. Never permits new acceptance/run."""
+    return _verify_result(raw, admission, key=key, current=False)
+
+
+def _verify_result(raw, admission, *, key, current):
+    manifest = _context(admission, key, current=current)
     try:
         if (not isinstance(raw, str) or not 0 < len(raw) <= MAX_RESULT_BYTES
                 or len(raw.encode('utf-8')) > MAX_RESULT_BYTES):
@@ -108,7 +125,7 @@ def verify_runner_result(raw: str, admission: RunnerAdmission, *, key: bytes) ->
         if not hmac.compare_digest(hmac.digest(key, _wire(envelope.result), 'sha256').hex(),
                                    envelope.signature):
             raise ValueError('Runner result signature unavailable')
-        _bound(envelope.result, admission, manifest)
+        _bound(envelope.result, admission, manifest, current=current)
         return envelope.result
     except (ValueError, TypeError, RecursionError):
         raise RunnerContractError('Runner result unavailable') from None

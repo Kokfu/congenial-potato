@@ -549,7 +549,9 @@ class RunnerAttempt(Base):
     """Row presence is consumed admission, even when delivery/execution is lost."""
     __tablename__ = 'runner_attempts'
     __table_args__ = (
-        CheckConstraint("status = 'unknown'", name='ck_runner_attempt_status'),
+        CheckConstraint("status IN ('unknown', 'accepted')", name='ck_runner_attempt_status'),
+        CheckConstraint("(status = 'accepted') = (accepted_result_hash IS NOT NULL)",
+                        name='ck_runner_attempt_result'),
         CheckConstraint('expires_at > issued_at', name='ck_runner_attempt_expiry'),
     )
     invocation_id: Mapped[str] = mapped_column(ForeignKey('tool_invocations.id'), primary_key=True)
@@ -559,6 +561,7 @@ class RunnerAttempt(Base):
     binding_hash: Mapped[str] = mapped_column(String(64))
     manifest_sha256: Mapped[str] = mapped_column(String(64))
     capability_hash: Mapped[str] = mapped_column(String(64))
+    accepted_result_hash: Mapped[str | None] = mapped_column(String(64))
     image_id: Mapped[str] = mapped_column(String(71))
     job_sha256: Mapped[str] = mapped_column(String(64))
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -566,3 +569,19 @@ class RunnerAttempt(Base):
     status: Mapped[str] = mapped_column(String(30), default='unknown')
     reason: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class RunnerResult(Base):
+    """Immutable fixture metadata through the service, never model context."""
+    __tablename__ = 'runner_results'
+    __table_args__ = (
+        CheckConstraint("trust_origin = 'synthetic_runner'", name='ck_runner_result_trust'),
+    )
+    invocation_id: Mapped[str] = mapped_column(ForeignKey('runner_attempts.invocation_id'), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'))
+    agent_id: Mapped[str] = mapped_column(ForeignKey('agents.id'))
+    root_id: Mapped[str] = mapped_column(ForeignKey('executions.id'))
+    payload_hash: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict] = mapped_column(JSON)
+    trust_origin: Mapped[str] = mapped_column(String(30), default='synthetic_runner')
+    accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
