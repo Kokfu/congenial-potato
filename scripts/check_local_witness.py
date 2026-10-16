@@ -1,0 +1,57 @@
+"""Run only the synthetic local witness suite; no database or product startup."""
+import os
+from pathlib import Path
+import py_compile
+import subprocess
+import sys
+import tempfile
+
+
+ROOT = Path(__file__).resolve().parents[1]
+TEST_NAMES = (
+    'test_durable_local_recovery_witness.py',
+    'test_durable_witness_fake_ledger_recovery.py',
+    'test_durable_local_witness_transport.py',
+    'test_witness_pending_snapshot_audit_rollback.py',
+    'test_witness_rpc_response_validation.py',
+    'test_synthetic_write_recovery_witness.py',
+)
+COMPILE_PATHS = (
+    *(f'backend/tests/{name}' for name in TEST_NAMES),
+    'backend/tests/durable_local_recovery_witness.py',
+    'backend/tests/durable_local_witness_transport.py',
+    'backend/tests/run_durable_local_witness_server.py',
+    'backend/tests/synthetic_write_recovery_witness.py',
+    'backend/tests/synthetic_write_ledger.py',
+    'backend/tests/test_synthetic_write_admission.py',
+    'backend/src/workforce/synthetic_write_contract.py',
+    'backend/src/workforce/reviewed_runner_contract.py',
+    'scripts/check_local_witness.py',
+)
+
+
+def main():
+    env = dict(os.environ)
+    env['PYTHONPATH'] = os.pathsep.join(str(ROOT / path) for path in
+        ('backend/tests', 'backend/src'))
+    env['PYTEST_DISABLE_PLUGIN_AUTOLOAD'] = '1'
+    env.pop('PYTEST_ADDOPTS', None)
+    env.pop('PYTEST_PLUGINS', None)
+    result = subprocess.run([
+        sys.executable, '-m', 'pytest', '-q', '-x', '--noconftest',
+        '-c', os.devnull, '-p', 'no:cacheprovider',
+        *(str(ROOT/'backend/tests'/name) for name in TEST_NAMES),
+    ], cwd=ROOT, env=env, check=False)
+    if result.returncode:
+        return result.returncode
+    with tempfile.TemporaryDirectory(prefix='witness-compile-') as directory:
+        for index, path in enumerate(COMPILE_PATHS):
+            py_compile.compile(str(ROOT/path),
+                cfile=str(Path(directory)/f'{index}.pyc'), doraise=True)
+    print(f'Local witness compilation: {len(COMPILE_PATHS)} files passed; '
+          'PostgreSQL fixture compiled only.', flush=True)
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

@@ -112,6 +112,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 104. [State-key process rotation at fake-ledger boundary](research/witness-state-rotation-process-effect-validation.md)
 105. [Witness generation rollback boundary](research/witness-generation-rollback-boundary-validation.md)
 106. [Coordinated witness and effect-state rollback](research/witness-coordinated-full-rollback-effect-validation.md)
+107. [Reproducible local witness check command](research/witness-local-check-command.md)
 
 ## Architecture
 
