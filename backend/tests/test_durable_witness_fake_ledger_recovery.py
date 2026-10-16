@@ -145,3 +145,48 @@ def test_empty_replacement_ledger_and_conflicting_request_do_not_reopen_witness(
     with pytest.raises(WitnessDenied, match='consumed'):
         apply_through_fixture(restarted, intent, control, ledger_dir)
 
+
+def test_consolidated_rollback_restart_overlap_and_lost_consume_reply(tmp_path):
+    intent, control, ledger_dir, ledger_path, snapshots, witness_path, witness = setup(tmp_path)
+    invocation = str(intent.scope.invocation_id)
+    reserve = {'operation': 'reserve', 'request_id': invocation,
+        'ledger_id': str(intent.ledger_id), 'invocation_id': invocation,
+        'intent_sha256': intent_digest(intent)}
+
+    # A retry after an unknown reservation reply returns the same durable ticket.
+    first = authenticated(witness.reserve, reserve)
+    retry = authenticated(witness.reserve, reserve)
+    assert retry == first
+    assert first['generation'] == 1
+
+    consume = {'operation': 'consume', **{key: first[key] for key in
+        ('request_id','ledger_id','invocation_id','intent_sha256','generation',
+         'state_key_id','nonce')}, 'ticket_mac': first['ticket_mac']}
+    witness.consume(caller_id=CALLER, request=consume,
+        mac=request_mac(CALLER_KEY, CALLER, consume))  # reply is deliberately lost
+
+    # Simulate coordinated control and ledger restore; witness is intentionally retained.
+    shutil.copy2(snapshots/'control.sqlite3', control)
+    shutil.copy2(snapshots/'ledger.sqlite3', ledger_path)
+    restarted = DurableLocalRecoveryWitness(witness_path,
+        caller_keys={CALLER: {'caller-v1': CALLER_KEY, 'caller-v2': b'e' * 32}},
+        state_keys={'state-v1': STATE_KEY, 'state-v2': b'x' * 32},
+        current_state_key_id='state-v2')
+
+    with pytest.raises(WitnessDenied, match='consumed'):
+        authenticated(restarted.reserve, reserve, key=CALLER_KEY)
+    with pytest.raises(WitnessDenied, match='consumed'):
+        authenticated(restarted.consume, consume, key=CALLER_KEY)
+    generation = authenticated(restarted.generation,
+        {'operation': 'generation'}, key=CALLER_KEY)
+    assert generation['generation'] == 1
+    with sqlite3.connect(control) as db:
+        assert db.execute('SELECT count(*) FROM admission').fetchone()[0] == 0
+    with sqlite3.connect(ledger_path) as db:
+        assert db.execute('SELECT count(*) FROM records').fetchone()[0] == 0
+        assert db.execute('SELECT count(*) FROM attempts').fetchone()[0] == 0
+    with sqlite3.connect(witness_path) as db:
+        assert db.execute('SELECT count(*) FROM reservations WHERE consumed=1').fetchone()[0] == 1
+        assert db.execute("SELECT count(*) FROM witness_events WHERE event='reserved'").fetchone()[0] == 1
+        assert db.execute("SELECT count(*) FROM witness_events WHERE event='consumed'").fetchone()[0] == 1
+
