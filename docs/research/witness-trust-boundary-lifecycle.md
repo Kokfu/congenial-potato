@@ -18,7 +18,7 @@ This note consolidates what the local synthetic prototype exercises and the life
 - A reviewed remote authenticated transport and caller identity enrollment/revocation process, with explicit authorization boundaries for recovery administrators.
 - Independent key generation, protected custody, delivery, rotation overlap, revocation, destruction, emergency compromise response, and audited operator procedures for caller and state keys.
 - A defined availability and recovery design that fails closed, prevents silent reinitialization, reconciles unknown outcomes, and establishes how witness state is recovered without rollback.
-- Independently retained, tamper-evident audit evidence and a reviewed retention/monitoring process.
+- Independently retained, tamper-evident audit evidence and a reviewed retention/monitoring process. The [pending-snapshot audit rollback drill](witness-pending-snapshot-audit-rollback-validation.md) shows that restoring a pending local witness snapshot allows the exact old consume ticket to succeed again and recreates identical final audit rows; the in-file audit cannot establish rollback detection.
 - Integration evidence against the actual control database and authorized effect adapters, plus operational review of restore, replacement, concurrency, outage, and recovery drills in that protected environment.
 - Separate owner authorization and review before enabling any product dispatch or external write path.
 

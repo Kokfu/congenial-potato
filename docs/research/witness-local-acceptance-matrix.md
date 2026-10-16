@@ -30,4 +30,6 @@ Results: **46 pytest cases passed in 2.09s**; Python compilation passed; **9 in-
 
 ## Limits
 
+Follow-up Phase 8.4ak: a separate standard-library [pending-snapshot audit rollback drill](witness-pending-snapshot-audit-rollback-validation.md) verifies exact consumed-ticket replay and identical recreated audit rows after restoring a pending witness snapshot. Its focused results are recorded separately; the 46-case pytest result above is the Phase 8.4ai checkpoint.
+
 This matrix does not exercise the PostgreSQL-backed wrapper, an independently administered witness, remote caller authentication or transport, external effect systems, protected key custody, tamper-evident external audit, protected backups, physical power-loss behavior, or production recovery. The SQLite witness and fake ledger are local replaceable fixtures, and coordinated rollback confirms the replay risk when all copies are restored together. The local Unix socket is same-host only. No production safety claim follows. Product execution and external writes remain disabled pending the prerequisites in [the lifecycle note](witness-trust-boundary-lifecycle.md).
