@@ -1,5 +1,6 @@
 """Run only the synthetic local witness suite; no database or product startup."""
 import os
+import ast
 from pathlib import Path
 import py_compile
 import subprocess
@@ -8,6 +9,13 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
+FIXTURE_MODULES = frozenset({
+    'durable_local_recovery_witness',
+    'durable_local_witness_transport',
+    'run_durable_local_witness_server',
+    'synthetic_write_recovery_witness',
+    'synthetic_write_ledger',
+})
 TEST_NAMES = (
     'test_durable_local_recovery_witness.py',
     'test_durable_witness_fake_ledger_recovery.py',
@@ -30,7 +38,33 @@ COMPILE_PATHS = (
 )
 
 
+def check_product_imports():
+    files = sorted((ROOT/'backend/src').rglob('*.py'))
+    if not files:
+        raise SystemExit('No product Python source files found for fixture import check')
+    violations = []
+    for path in files:
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module or '', *(alias.name for alias in node.names)]
+            else:
+                continue
+            if any(FIXTURE_MODULES.intersection(name.split('.')) for name in names):
+                violations.append(f'{path.relative_to(ROOT)}:{node.lineno}')
+    if violations:
+        print('Product imports test-only witness/fake-ledger modules: ' +
+            ', '.join(violations), file=sys.stderr)
+        return False
+    print(f'Product fixture import check: {len(files)} Python files passed.', flush=True)
+    return True
+
+
 def main():
+    if not check_product_imports():
+        return 1
     env = dict(os.environ)
     env['PYTHONPATH'] = os.pathsep.join(str(ROOT / path) for path in
         ('backend/tests', 'backend/src'))
