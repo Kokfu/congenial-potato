@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -58,7 +59,8 @@ def fixture_run(authenticated, output, with_policy=True, web_grant=False):
     assert response.status_code == 202, response.text
     execution_id = response.json()['execution_id']
     DBOS(config={'name': 'workforce-test',
-                 'system_database_url': 'postgresql://postgres:phase1fixture@127.0.0.1:55433/workforce_dbos_test',
+                 'system_database_url': os.environ.get('DBOS_SYSTEM_DATABASE_URL',
+                     'postgresql://postgres:phase1fixture@127.0.0.1:55433/workforce_dbos_test'),
                  'application_version': 'usage-normalization-v1'})
     DBOS.launch()
     try:
