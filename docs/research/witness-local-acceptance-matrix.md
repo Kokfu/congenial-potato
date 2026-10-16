@@ -1,43 +1,68 @@
-# Phase 8.4 local witness acceptance matrix: Phase 8.4ai
+# Local witness acceptance matrix: Phase 8.4ba
 
-Date: 2026-10-16. Branch: `phase-8-witness-acceptance-matrix-rollback-results`. Parent: coordinated witness rollback draft PR #106.
+Date: 2026-10-16. Branch: `phase-8-witness-acceptance-checkpoint-106`. Parent: response-body contract draft PR [#124](https://github.com/Kokfu/congenial-potato/pull/124), commit `214ac9bb252702561bade7850120ea65ba14a02a`.
 
-This checkpoint reruns the durable protocol, fake-ledger restore drills, and local process transport suites as one focused set. It includes explicit generation-file rewind and coordinated witness/control/ledger rollback cases, which show that local monotonicity and consumed state can be rolled back with their SQLite file. The table maps claims to the fixtures that exercise them; all results remain synthetic and local.
+This is the current local synthetic checkpoint. The fixture protocol, same-host transport and fake-ledger drills do not constitute an independent recovery service or product activation. Expected rollback and caller-effect limitations are recorded separately below.
 
-| Area | Evidence exercised | Test module |
-| --- | --- | --- |
-| Reservation and consume | Exact binding, idempotent retry, one-way consume after lost reply, restart continuity, concurrent winner | `test_durable_local_recovery_witness.py` |
-| Generation/admin | Monotonic increment, idempotent advance retry, stale ticket denial, caller allowlist, overlapping admin keys, generation rewind after file restore | `test_durable_local_recovery_witness.py` |
-| Authentication and keys | Request/response HMAC, caller/state key overlap and retirement, fail-closed pending key removal | `test_durable_local_recovery_witness.py` |
-| State path and schema | Private path checks, malformed/missing state denial, no replacement bootstrap, invocation reopening and generation rewind after replaceable-file rollback | `test_durable_local_recovery_witness.py` |
-| Effect boundary and recovery | Actual test fake-ledger writes, control/ledger rollback and replacement, coordinated witness/control/ledger rollback showing a second fake event, outage/restore, lost consume reply, authentication denial, caller/state key rotations | `test_durable_witness_fake_ledger_recovery.py` |
-| Local RPC transport | Separate server/client processes, process consume/admin races, restart/lost reply, peer/socket/config/JSON/frame denial | `test_durable_local_witness_transport.py` |
-
-## Validation commands and results
-
-Current follow-up command (Phase 8.4ao): [the local witness checker](witness-local-check-command.md) runs the current checkout directly with a fixed six-module list and excludes PostgreSQL conftest loading. The Phase 8.4az run passed the [static fixture-import guard](witness-product-import-boundary-validation.md) over **65 product Python files**, **106 local cases**, and **15 compilation checks**, including [response body contracts](witness-response-body-contract-validation.md), [strict JSON/numeric decoding](witness-rpc-json-validation.md), [typed recovery-admin configuration](witness-server-config-validation.md), [canonical caller/key authentication encoding](witness-canonical-auth-identities-validation.md), the [socket liveness guard](witness-socket-liveness-guard-validation.md), [frame receive deadlines](witness-frame-receive-deadline-validation.md), [handler capacity](witness-connection-cap-validation.md), the [stop-state dispatch gate](witness-stop-dispatch-gate-validation.md), [atomic admission/dispatch draining](witness-dispatch-drain-validation.md), and the [caller-effect boundary after drain](witness-drain-caller-effect-boundary-validation.md). The copy-based commands and Phase 8.4ai results below remain historical evidence.
-
-The pytest files are copied outside `backend/tests` so the repository-wide `conftest.py` does not require PostgreSQL for these local-only suites.
+## Current command and recorded results
 
 ```sh
-cp backend/tests/test_durable_local_recovery_witness.py /tmp/test_durable_local_recovery_witness.py
-cp backend/tests/test_durable_witness_fake_ledger_recovery.py /tmp/test_durable_witness_fake_ledger_recovery.py
-cp backend/tests/test_durable_local_witness_transport.py /tmp/test_durable_local_witness_transport.py
-PYTHONPATH=/tmp/phase84-python:backend/tests:backend/src python -m pytest -q -x -p no:cacheprovider /tmp/test_durable_local_recovery_witness.py /tmp/test_durable_witness_fake_ledger_recovery.py /tmp/test_durable_local_witness_transport.py
-python -m py_compile backend/tests/durable_local_recovery_witness.py backend/tests/durable_local_witness_transport.py backend/tests/run_durable_local_witness_server.py backend/tests/test_durable_local_recovery_witness.py backend/tests/test_durable_witness_fake_ledger_recovery.py backend/tests/test_durable_local_witness_transport.py backend/tests/test_synthetic_write_admission.py
-PYTHONPATH=backend/tests python -m unittest -v test_synthetic_write_recovery_witness
+/tmp/witness-local-venv/bin/python scripts/check_local_witness.py
 ```
 
-Results: **46 pytest cases passed in 2.09s**; Python compilation passed; **9 in-memory witness regressions passed**. Local Markdown links and `git diff --check` also passed.
+The [fixed local checker](witness-local-check-command.md) tests the checkout directly, isolates pytest options/plugins/configuration, excludes PostgreSQL conftest loading and compiles selected files to a temporary directory. Dependency setup is documented with that command.
 
-## Limits
+The latest executed runtime check is the Phase 8.4az parent: **106 local cases passed in 4.53s**, **65 product Python files passed the static fixture-import guard**, and **15 files compiled**. The PostgreSQL wrapper is compiled only. This documentation-only refresh did not rerun those test bodies; collection-only inspection verified the exact six-module, 106-case inventory, and changed-document links plus `git diff --check` passed.
 
-Follow-up Phase 8.4an: [per-exchange nonce binding](witness-rpc-exchange-freshness-validation.md) rejects captured replies for identical requests across different random exchanges. Nonce tampering fails before mutation and reservation retries keep one stable ticket body. **67 local cases passed**; this supplies neither anti-rollback storage nor a production transport boundary. The follow-ups below describe their historical results and limits.
+| Collected module | Cases |
+| --- | ---: |
+| [Durable protocol](../../backend/tests/test_durable_local_recovery_witness.py) | 25 |
+| [Fake-ledger recovery](../../backend/tests/test_durable_witness_fake_ledger_recovery.py) | 13 |
+| [Local transport/process lifecycle](../../backend/tests/test_durable_local_witness_transport.py) | 37 |
+| [Pending-snapshot audit rollback](../../backend/tests/test_witness_pending_snapshot_audit_rollback.py) | 1 |
+| [Response parsing/binding/contracts](../../backend/tests/test_witness_rpc_response_validation.py) | 21 |
+| [In-memory protocol regressions](../../backend/tests/test_synthetic_write_recovery_witness.py) | 9 |
+| **Total** | **106** |
 
-Follow-up Phase 8.4am: the [response/request binding increment](witness-rpc-response-binding-validation.md) signs the exact request MAC in a v2 response envelope and checks it at the RPC client. Mismatched operation/ticket/caller responses now reject; **63 local cases passed**. Identical-request response freshness remains unresolved, and the earlier follow-up results below describe their own historical checkpoints.
+## Current fixture behavior and evidence
 
-Follow-up Phase 8.4al: the client rejects duplicate response JSON fields before authentication, including nested fields whose last value otherwise authenticates. The [RPC JSON evidence](witness-rpc-json-validation.md) records the regression and a combined local run of **58 cases** including all earlier 46 durable/protocol/process cases, nine in-memory regressions, the pending-snapshot audit drill and two response-parser tests. This does not add response freshness or request correlation.
+| Area | What the local checks exercise | Evidence |
+| --- | --- | --- |
+| Reservation/consumption | Exact binding, idempotent reserve retry, one-way consume, retained-state restart and concurrent winner | [Durable protocol](durable-local-recovery-witness-validation.md) |
+| Generation/admin | Idempotent advance identity, stale-ticket denial, stable caller allowlist, typed unique admin configuration | [Advance retry](idempotent-witness-generation-advance-validation.md), [configuration](witness-server-config-validation.md) |
+| Identity/key encoding | Canonical named caller/key/request fields under v2 request MAC domains; old delimiter format rejected | [Canonical identities](witness-canonical-auth-identities-validation.md) |
+| Key lifecycle | Caller/state-key overlap, retirement, missing pending-ticket key denial and retained consumed identity | [Lifecycle](witness-trust-boundary-lifecycle.md), [process state-key rotation](witness-state-process-key-rotation-validation.md) |
+| Framing/decoding | Byte cap, duplicate fields, non-finite numeric rejection and decode-error normalization | [RPC JSON](witness-rpc-json-validation.md), [frame size](witness-oversize-frame-validation.md) |
+| Response correlation | v2 signed request binding plus fresh authenticated exchange nonce; stale/mismatched replies reject | [Request binding](witness-rpc-response-binding-validation.md), [exchange freshness](witness-rpc-exchange-freshness-validation.md) |
+| Response metadata | Exact operation fields/status, integer generation range, canonical IDs, echoed bindings and ticket/digest shape | [Body contracts](witness-response-body-contract-validation.md) |
+| Endpoint startup | Active/uncertain socket refusal, stable stale-path inode check, authenticated process readiness | [Socket guard](witness-socket-liveness-guard-validation.md) |
+| Local receive/load | Monotonic frame receive budget, 32 active-handler cap and slot recovery | [Receive deadline](witness-frame-receive-deadline-validation.md), [capacity](witness-connection-cap-validation.md) |
+| Stop/drain | Late-frame denial, atomic stop/admission, counted synchronous method drain, explicit unknown on drain expiry | [Stop gate](witness-stop-dispatch-gate-validation.md), [dispatch drain](witness-dispatch-drain-validation.md) |
+| Effect recovery | Real fake-ledger fixture records through retained-witness rollback/replacement, lost reply, outage and key changes | [Fake-ledger recovery](durable-witness-fake-ledger-recovery-validation.md), [lost reply](witness-lost-reply-effect-boundary-validation.md) |
+| Product/source boundary | Named static fixture imports denied in product Python before tests; no product runtime imported by that scan | [Static guard](witness-product-import-boundary-validation.md) |
 
-Follow-up Phase 8.4ak: a separate standard-library [pending-snapshot audit rollback drill](witness-pending-snapshot-audit-rollback-validation.md) verifies exact consumed-ticket replay and identical recreated audit rows after restoring a pending witness snapshot. Its focused results are recorded separately; the 46-case pytest result above is the Phase 8.4ai checkpoint.
+These are scoped checks. HMAC/body validation authenticates fixture metadata, not execution truth or current authority. The client checks ticket-MAC shape without possessing the state signing key. A fresh exchange is not trusted time. The static import guard does not analyze dynamic loaders or prove the whole dispatch graph.
 
-This matrix does not exercise the PostgreSQL-backed wrapper, an independently administered witness, remote caller authentication or transport, external effect systems, protected key custody, tamper-evident external audit, protected backups, physical power-loss behavior, or production recovery. The SQLite witness and fake ledger are local replaceable fixtures, and coordinated rollback confirms the replay risk when all copies are restored together. The local Unix socket is same-host only. No production safety claim follows. Product execution and external writes remain disabled pending the prerequisites in [the lifecycle note](witness-trust-boundary-lifecycle.md).
+## Observed limitations that remain acceptance evidence
+
+| Trigger | Observed local result | Evidence |
+| --- | --- | --- |
+| Restore prior witness generation file | Generation rewinds from 3 to 1 | [Generation rollback](witness-generation-rollback-boundary-validation.md) |
+| Restore witness, control and fake-ledger files together | The same intent can create a second distinct fake event | [Coordinated rollback](witness-coordinated-full-rollback-effect-validation.md) |
+| Restore a pending witness snapshot | The exact old consume ticket works again and recreates identical audit rows/response | [Pending audit rollback](witness-pending-snapshot-audit-rollback-validation.md) |
+| Drain expires with admitted work paused | Close reports unknown; the operation can still commit later | [Dispatch drain](witness-dispatch-drain-validation.md) |
+| Witness successfully drains after consume reply | The retained caller can still create one fake-ledger effect afterward | [Caller/effect boundary](witness-drain-caller-effect-boundary-validation.md) |
+
+The last row is one post-drain effect, not replay. Successful drain concerns only synchronous protocol methods admitted through one server instance. It does not revoke direct witness calls, stop other processes, finish all response/frame handlers or quiesce caller/control/effect stores. Socket probes/inode checks are non-atomic and do not eliminate all startup/filesystem races.
+
+## External prerequisites and disabled gate
+
+The [lifecycle checklist](witness-trust-boundary-lifecycle.md) still requires a separately administered service, reviewed remote authenticated transport, independently protected anti-rollback generation/consumed state, separate restore authority, protected key lifecycle and independently retained tamper-evident audit evidence. Coordinated restore also needs independent admission/caller/effect fencing or quiescence, reconciliation of consumed-but-unapplied and unknown outcomes, and divergent-snapshot resolution before admission reopens.
+
+Those controls require separately authorized infrastructure and operational/integration evidence. The PostgreSQL-backed wrapper, actual effect adapters, protected storage/backups and production recovery remain unrun. No protected-infrastructure, physical power-loss or production-safety claim follows. Product dispatch, real external writes, paid models, deployment and production integration remain disabled.
+
+## Historical checkpoints
+
+The original Phase 8.4ai matrix recorded **46 pytest cases in 2.09s**, compilation and **9 separate in-memory regressions**. Its original commands/results remain available in the [immutable source checkpoint](https://github.com/Kokfu/congenial-potato/blob/8280b316c26fc0e04f242516f3f567011b549571/docs/research/witness-local-acceptance-matrix.md).
+
+Later per-increment results remain in their dated notes and `progress.md`: [response JSON](witness-rpc-json-validation.md), [request binding](witness-rpc-response-binding-validation.md), [exchange freshness](witness-rpc-exchange-freshness-validation.md), and the linked lifecycle/recovery evidence above. Their older counts and stated gaps describe those historical source states; the current tables describe the parent of this refresh.
