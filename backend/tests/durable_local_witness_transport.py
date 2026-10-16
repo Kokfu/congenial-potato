@@ -119,7 +119,7 @@ class UnixWitnessClient:
             raise WitnessTransportDenied('witness request denied or response unavailable')
         try:
             return verify_response(key, response, self.current_key_id,
-                expected_request_mac=frame['mac'])
+                expected_request_mac=frame['mac'], expected_request=request)
         except (WitnessDenied, RecursionError):
             raise WitnessTransportDenied('witness response authentication failed') from None
 

@@ -36,7 +36,7 @@ def authenticated(method, request, *, caller=CALLER, key=CALLER_KEY):
     mac = request_mac(key, caller, request)
     response = method(caller_id=caller, request=request,
         mac=mac)
-    return verify_response(key, response, expected_request_mac=mac)
+    return verify_response(key, response, expected_request_mac=mac, expected_request=request)
 
 
 def reserve_and_consume(witness, intent):
@@ -354,7 +354,9 @@ def test_pending_ticket_survives_caller_key_overlap_and_stays_spent_after_retire
     consume_reply = overlapping.consume(caller_id=CALLER, request=consume,
         mac=request_mac(replacement_key, CALLER, consume, 'caller-v2'),
         caller_key_id='caller-v2')
-    assert verify_response(replacement_key, consume_reply, 'caller-v2')['status'] == 'spent'
+    assert verify_response(replacement_key, consume_reply, 'caller-v2',
+        expected_request_mac=request_mac(replacement_key, CALLER, consume, 'caller-v2'),
+        expected_request=consume)['status'] == 'spent'
 
     # The local control/effect fixtures run only after authenticated consume.
     with sqlite3.connect(control) as db:

@@ -10,7 +10,9 @@ from pathlib import Path
 from uuid import uuid4
 from unittest.mock import patch
 
-from durable_local_recovery_witness import DurableLocalRecoveryWitness, WitnessDenied, request_mac
+from durable_local_recovery_witness import (
+    DurableLocalRecoveryWitness, WitnessDenied, request_mac, verify_response,
+)
 from durable_local_witness_transport import (
     LocalWitnessUnixServer, UnixWitnessClient, WitnessTransportDenied, _read_frame,
 )
@@ -295,6 +297,105 @@ class WitnessResponseValidationTests(unittest.TestCase):
             client = UnixWitnessClient(path, caller_id=self.caller, key=self.key)
             self.assertEqual(client.request(self.request)['generation'], 1)
         self.assertEqual(self.witness.path.read_bytes(), before)
+
+    def signed_body(self, frame, body):
+        reply = DurableLocalRecoveryWitness._envelope(self.key, body,
+            request_binding=frame['mac'])
+        return json.dumps(reply).encode('ascii')
+
+    def test_authenticated_generation_bodies_require_exact_fields_and_integer_generation(self):
+        bodies = {
+            'missing_generation': {'status': 'current'},
+            'missing_status': {'generation': 1},
+            'extra_field': {'status': 'current', 'generation': 1, 'extra': True},
+            'wrong_status': {'status': 'spent', 'generation': 1},
+            'boolean_generation': {'status': 'current', 'generation': True},
+            'float_generation': {'status': 'current', 'generation': 1.0},
+            'zero_generation': {'status': 'current', 'generation': 0},
+            'overflow_generation': {'status': 'current', 'generation': 2**63},
+        }
+        for label, body in bodies.items():
+            with self.subTest(body=label):
+                with self.assertRaises(WitnessTransportDenied):
+                    self.request_from_fixture_peer(lambda frame: self.signed_body(frame, body))
+
+    def test_authenticated_reservation_bodies_require_echoes_and_ticket_shape(self):
+        self.request = {'operation': 'reserve', 'request_id': str(uuid4()),
+            'ledger_id': str(uuid4()), 'invocation_id': str(uuid4()),
+            'intent_sha256': 'a' * 64}
+        updates = {'request_id': {'request_id': str(uuid4())},
+            'ledger_id': {'ledger_id': str(uuid4())},
+            'invocation_id': {'invocation_id': str(uuid4())},
+            'intent': {'intent_sha256': 'b' * 64},
+            'nonce': {'nonce': 'not-a-uuid'}, 'ticket_mac': {'ticket_mac': 'not-a-mac'},
+            'state_key': {'state_key_id': ''}, 'status': {'status': 'spent'},
+            'extra': {'extra': True}, 'missing': {}}
+        for label, update in updates.items():
+            def payload(frame):
+                reply = self.witness.reserve(caller_id=self.caller, request=self.request,
+                    mac=frame['mac'], exchange_nonce=frame['exchange_nonce'])
+                body = {**reply['body'], **update}
+                if label == 'missing':
+                    body.pop('state_key_id')
+                return self.signed_body(frame, body)
+
+            with self.subTest(body=label):
+                with self.assertRaises(WitnessTransportDenied):
+                    self.request_from_fixture_peer(payload)
+        with sqlite3.connect(self.witness.path) as db:
+            self.assertEqual(db.execute('SELECT count(*), sum(consumed) FROM reservations').fetchone(), (1, 0))
+            self.assertEqual(db.execute('SELECT count(*) FROM witness_events').fetchone(), (1,))
+
+    def test_authenticated_consume_bodies_require_exact_echoes_and_status(self):
+        self.request = self.reserve_consume_request()
+        base = {'status': 'spent', 'generation': self.request['generation'],
+            'request_id': self.request['request_id'], 'invocation_id': self.request['invocation_id']}
+        updates = {'request_id': {'request_id': str(uuid4())},
+            'invocation_id': {'invocation_id': str(uuid4())},
+            'generation': {'generation': base['generation'] + 1},
+            'status': {'status': 'reserved'}, 'extra': {'extra': True}, 'missing': {}}
+        for label, update in updates.items():
+            body = {**base, **update}
+            if label == 'missing':
+                body.pop('request_id')
+            with self.subTest(body=label):
+                with self.assertRaises(WitnessTransportDenied):
+                    self.request_from_fixture_peer(lambda frame: self.signed_body(frame, body))
+        with sqlite3.connect(self.witness.path) as db:
+            self.assertEqual(db.execute('SELECT sum(consumed) FROM reservations').fetchone(), (0,))
+
+    def test_historical_advance_body_is_valid_but_wrong_request_id_is_not(self):
+        self.request = {'operation': 'advance', 'request_id': str(uuid4())}
+        first = self.witness.advance_generation(caller_id=self.caller, request=self.request,
+            mac=request_mac(self.key, self.caller, self.request))
+        later = {'operation': 'advance', 'request_id': str(uuid4())}
+        self.witness.advance_generation(caller_id=self.caller, request=later,
+            mac=request_mac(self.key, self.caller, later))
+
+        def historical(frame):
+            reply = self.witness.advance_generation(caller_id=self.caller, request=self.request,
+                mac=frame['mac'], exchange_nonce=frame['exchange_nonce'])
+            return json.dumps(reply).encode('ascii')
+
+        self.assertEqual(self.request_from_fixture_peer(historical)['generation'], 2)
+        bad = {**first['body'], 'request_id': str(uuid4())}
+        with self.assertRaises(WitnessTransportDenied):
+            self.request_from_fixture_peer(lambda frame: self.signed_body(frame, bad))
+        with sqlite3.connect(self.witness.path) as db:
+            self.assertEqual(db.execute('SELECT generation FROM witness_state').fetchone(), (3,))
+            self.assertEqual(db.execute('SELECT count(*) FROM witness_events').fetchone(), (2,))
+
+    def test_active_verification_requires_both_complete_request_expectations(self):
+        expectations = [
+            {'expected_request_mac': self.response['request_mac']},
+            {'expected_request': self.request},
+            {'expected_request_mac': 'é' * 64, 'expected_request': self.request},
+        ]
+        for expected in expectations:
+            with self.subTest(expectation=tuple(expected)):
+                with self.assertRaises(WitnessDenied):
+                    verify_response(self.key, self.response, **expected)
+        self.assertEqual(verify_response(self.key, self.response), self.response['body'])
 
 
 if __name__ == '__main__':
