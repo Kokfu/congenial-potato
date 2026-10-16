@@ -1,6 +1,6 @@
-# Local witness acceptance matrix: Phase 8.4bk
+# Local witness acceptance matrix: Phase 8.4bl
 
-Date: 2026-10-17. Branch: `phase-8-witness-retired-key-empty-mac`. Parent: draft PR [#134](https://github.com/Kokfu/congenial-potato/pull/134), commit `784016e354d14cf2cb15c02c96209fad4019ebbb`.
+Date: 2026-10-17. Branch: `phase-8-witness-initialization-mode`. Parent: draft PR [#135](https://github.com/Kokfu/congenial-potato/pull/135), commit `a5252ea47779ce670ef9b8aa70e98d7c31f0394a`.
 
 This is the current local synthetic checkpoint. The fixture protocol, same-host transport and fake-ledger drills do not constitute an independent recovery service or product activation. Expected rollback and caller-effect limitations are recorded separately below.
 
@@ -12,7 +12,7 @@ This is the current local synthetic checkpoint. The fixture protocol, same-host 
 
 The [fixed local checker](witness-local-check-command.md) tests the checkout directly, isolates pytest options/plugins/configuration, excludes PostgreSQL conftest loading and compiles selected files to a temporary directory. Dependency setup is documented with that command.
 
-The latest six-module local runtime check is Phase 8.4bk: **142 local cases passed in 6.29s**, **65 product Python files passed the static fixture-import guard**, and **15 files compiled**. Separately, Phase 8.4bd passed **6 PostgreSQL-backed witness restore-wrapper cases in 9.76s** (three direct and three Unix-RPC), after fresh application/workflow migrations; see [RPC cases and limits](witness-postgres-rpc-restore-validation.md) and [database setup](witness-postgres-restore-wrapper-validation.md). The local command was rerun after fixing missing-key/empty-MAC authentication; see [authentication fix](witness-missing-auth-key-denial-validation.md) and [guard coverage](witness-admission-import-guard-validation.md). Collection-only inspection verified the exact six-module, 142-case inventory; changed-document links plus `git diff --check` passed.
+The latest six-module local runtime check is Phase 8.4bl: **151 local cases passed in 5.67s**, **65 product Python files passed the static fixture-import guard**, and **15 files compiled**. Separately, Phase 8.4bd passed **6 PostgreSQL-backed witness restore-wrapper cases in 9.76s** (three direct and three Unix-RPC), after fresh application/workflow migrations; see [RPC cases and limits](witness-postgres-rpc-restore-validation.md) and [database setup](witness-postgres-restore-wrapper-validation.md). The local command was rerun after fixing missing-key/empty-MAC authentication; see [authentication fix](witness-missing-auth-key-denial-validation.md) and [guard coverage](witness-admission-import-guard-validation.md). Collection-only inspection verified the exact six-module, 151-case inventory; changed-document links plus `git diff --check` passed.
 
 Phase 8.4be additionally passed the **complete 34-case admission file in 55.79s**, including those six restore cases and migration safeguards; see [admission regression checkpoint](witness-admission-regression-checkpoint.md). These counts overlap and must not be added together.
 
@@ -24,13 +24,13 @@ Phase 8.4bj reran the default PostgreSQL command after the authentication fix: *
 
 | Collected module | Cases |
 | --- | ---: |
-| [Durable protocol](../../backend/tests/test_durable_local_recovery_witness.py) | 49 |
+| [Durable protocol](../../backend/tests/test_durable_local_recovery_witness.py) | 58 |
 | [Fake-ledger recovery](../../backend/tests/test_durable_witness_fake_ledger_recovery.py) | 13 |
 | [Local transport/process lifecycle](../../backend/tests/test_durable_local_witness_transport.py) | 46 |
 | [Pending-snapshot audit rollback](../../backend/tests/test_witness_pending_snapshot_audit_rollback.py) | 1 |
 | [Response parsing/binding/contracts](../../backend/tests/test_witness_rpc_response_validation.py) | 24 |
 | [In-memory protocol regressions](../../backend/tests/test_synthetic_write_recovery_witness.py) | 9 |
-| **Total** | **142** |
+| **Total** | **151** |
 
 ## Current fixture behavior and evidence
 
@@ -44,6 +44,7 @@ Phase 8.4bj reran the default PostgreSQL command after the authentication fix: *
 | Framing/decoding | Byte cap, duplicate fields, non-finite numeric rejection and decode-error normalization | [RPC JSON](witness-rpc-json-validation.md), [frame size](witness-oversize-frame-validation.md) |
 | Response correlation | v2 signed request binding plus fresh authenticated exchange nonce; stale/mismatched replies reject | [Request binding](witness-rpc-response-binding-validation.md), [exchange freshness](witness-rpc-exchange-freshness-validation.md) |
 | Response metadata | Exact operation fields/status, integer generation range, canonical IDs, echoed bindings and ticket/digest shape | [Body contracts](witness-response-body-contract-validation.md) |
+| Initialization mode | Direct constructor requires exact boolean; invalid modes neither create missing state nor alter retained state | [Explicit initialization](witness-initialization-mode-validation.md) |
 | Endpoint startup | Active/uncertain socket refusal, stable stale-path inode check, authenticated process readiness | [Socket guard](witness-socket-liveness-guard-validation.md) |
 | Local receive/load | Monotonic frame receive budget, 32 active-handler cap and slot recovery | [Receive deadline](witness-frame-receive-deadline-validation.md), [capacity](witness-connection-cap-validation.md) |
 | Stop/drain | Late-frame denial, atomic stop/admission, counted synchronous method drain, explicit unknown on drain expiry | [Stop gate](witness-stop-dispatch-gate-validation.md), [dispatch drain](witness-dispatch-drain-validation.md) |
