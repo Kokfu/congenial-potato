@@ -327,6 +327,35 @@ def test_caller_key_rotation_overlap_and_retirement_preserve_stable_admin_identi
     ]
 
 
+def test_startup_rejects_symlink_and_non_private_witness_state(tmp_path):
+    path = tmp_path/'witness.sqlite3'
+    witness = create(path)
+    alias = tmp_path/'witness-alias.sqlite3'
+    alias.symlink_to(path)
+    with pytest.raises(WitnessDenied, match='private witness state file'):
+        reopen(alias)
+    path.chmod(0o644)
+    with pytest.raises(WitnessDenied, match='private witness state file'):
+        reopen(path)
+    path.chmod(0o600)
+    path.parent.chmod(0o750)
+    with pytest.raises(WitnessDenied, match='private witness state directory'):
+        reopen(path)
+    path.parent.chmod(0o700)
+    assert call(witness, {'operation':'generation'})['generation'] == 1
+
+
+def test_startup_rejects_malformed_or_incomplete_witness_schema(tmp_path):
+    path = tmp_path/'incomplete.sqlite3'
+    path.touch(mode=0o600)
+    with sqlite3.connect(path) as db:
+        db.execute('CREATE TABLE witness_state(singleton INTEGER, generation INTEGER)')
+        db.execute('INSERT INTO witness_state VALUES(1,1)')
+    path.chmod(0o600)
+    with pytest.raises(WitnessDenied, match='witness state unavailable'):
+        reopen(path)
+
+
 def test_restoring_app_and_fake_ledger_fixtures_does_not_restore_separate_witness_file(tmp_path):
     """Synthetic fixture copies model coordinated restore; not backup/power-loss proof."""
     witness_path = tmp_path/'outside-fixture-restore-domains'/'witness.sqlite3'
