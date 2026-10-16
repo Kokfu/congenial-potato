@@ -21,20 +21,20 @@ LEDGER = str(uuid4())
 INTENT = 'a' * 64
 
 
-def call(witness, request, *, key=CALLER_KEY, caller=CALLER):
-    envelope = dispatch(witness, request, caller=caller, key=key)
-    return verify_response(key, envelope)
+def call(witness, request, *, key=CALLER_KEY, caller=CALLER, key_id='caller-v1'):
+    envelope = dispatch(witness, request, caller=caller, key=key, key_id=key_id)
+    return verify_response(key, envelope, key_id)
 
 
-def dispatch(witness, request, *, caller=CALLER, key=CALLER_KEY):
-    mac = request_mac(key, caller, request)
+def dispatch(witness, request, *, caller=CALLER, key=CALLER_KEY, key_id='caller-v1'):
+    mac = request_mac(key, caller, request, key_id)
     if request['operation'] == 'reserve':
-        return witness.reserve(caller_id=caller, request=request, mac=mac)
+        return witness.reserve(caller_id=caller, request=request, mac=mac, caller_key_id=key_id)
     if request['operation'] == 'consume':
-        return witness.consume(caller_id=caller, request=request, mac=mac)
+        return witness.consume(caller_id=caller, request=request, mac=mac, caller_key_id=key_id)
     if request['operation'] == 'advance':
-        return witness.advance_generation(caller_id=caller, request=request, mac=mac)
-    return witness.generation(caller_id=caller, request=request, mac=mac)
+        return witness.advance_generation(caller_id=caller, request=request, mac=mac, caller_key_id=key_id)
+    return witness.generation(caller_id=caller, request=request, mac=mac, caller_key_id=key_id)
 
 
 def reserve_request(*, request_id=None, invocation_id=None, ledger_id=LEDGER, intent=INTENT):
@@ -290,6 +290,31 @@ def test_retired_key_is_not_needed_to_keep_consumed_identity_spent(tmp_path):
         advance_callers={CALLER})
     with pytest.raises(WitnessDenied, match='already consumed'):
         call(retired, reserve_request(invocation_id=reservation['invocation_id']))
+
+
+def test_caller_key_rotation_overlap_and_retirement_preserve_stable_admin_identity(tmp_path):
+    path = tmp_path/'witness.sqlite3'
+    old_key, new_key = b'a'*32, b'b'*32
+    initial = DurableLocalRecoveryWitness(path, caller_keys={CALLER: old_key},
+        state_key=STATE_KEY, advance_callers={CALLER}, initialize=True)
+    reservation_request = reserve_request()
+    reservation = call(initial, reservation_request, key=old_key)
+    rotated = DurableLocalRecoveryWitness(path,
+        caller_keys={CALLER: {'caller-v1': old_key, 'caller-v2': new_key}},
+        current_caller_key_ids={CALLER: 'caller-v2'}, state_key=STATE_KEY,
+        advance_callers={CALLER})
+    assert call(rotated, reservation_request, key=old_key, key_id='caller-v1') == reservation
+    assert call(rotated, reservation_request, key=new_key, key_id='caller-v2') == reservation
+    advance = {'operation':'advance','request_id':str(uuid4())}
+    assert call(rotated, advance, key=new_key, key_id='caller-v2')['generation'] == 2
+    retired = DurableLocalRecoveryWitness(path,
+        caller_keys={CALLER: {'caller-v2': new_key}},
+        current_caller_key_ids={CALLER: 'caller-v2'}, state_key=STATE_KEY,
+        advance_callers={CALLER})
+    with pytest.raises(WitnessDenied, match='caller authentication failed'):
+        call(retired, {'operation':'generation'}, key=old_key, key_id='caller-v1')
+    assert call(retired, {'operation':'generation'}, key=new_key,
+        key_id='caller-v2')['generation'] == 2
 
 
 def test_restoring_app_and_fake_ledger_fixtures_does_not_restore_separate_witness_file(tmp_path):

@@ -44,20 +44,20 @@ def _digest(value):
     return value
 
 
-def request_mac(key: bytes, caller_id: str, request: dict) -> str:
+def request_mac(key: bytes, caller_id: str, request: dict, key_id='caller-v1') -> str:
     """Fixture client helper. Callers must keep the key outside request data."""
-    return hmac.digest(key, _REQUEST_DOMAIN + caller_id.encode() + b'\0' +
+    return hmac.digest(key, _REQUEST_DOMAIN + caller_id.encode() + b'\0' + key_id.encode() + b'\0' +
                        _canonical(request), 'sha256').hex()
 
 
-def verify_response(key: bytes, envelope: dict) -> dict:
+def verify_response(key: bytes, envelope: dict, key_id='caller-v1') -> dict:
     """Verify response authenticity before interpreting the returned state."""
-    if type(envelope) is not dict or set(envelope) != {'body', 'mac'}:
+    if type(envelope) is not dict or set(envelope) != {'body', 'key_id', 'mac'} or envelope['key_id'] != key_id:
         raise WitnessDenied('witness response unavailable')
     body, mac = envelope['body'], envelope['mac']
     if type(body) is not dict or type(mac) is not str or re.fullmatch(r'[0-9a-f]{64}', mac) is None:
         raise WitnessDenied('witness response unavailable')
-    expected = hmac.digest(key, _RESPONSE_DOMAIN + _canonical(body), 'sha256').hex()
+    expected = hmac.digest(key, _RESPONSE_DOMAIN + key_id.encode() + b'\0' + _canonical(body), 'sha256').hex()
     if not hmac.compare_digest(expected, mac):
         raise WitnessDenied('witness response authentication failed')
     return body
@@ -66,23 +66,41 @@ def verify_response(key: bytes, envelope: dict) -> dict:
 class DurableLocalRecoveryWitness:
     """SQLite-backed protocol fixture with caller authentication and atomic state."""
 
-    def __init__(self, path, *, caller_keys: dict[str, bytes], state_key: bytes | None = None,
+    def __init__(self, path, *, caller_keys: dict[str, bytes],
+                 current_caller_key_ids: dict[str, str] | None = None,
+                 state_key: bytes | None = None,
                  state_keys: dict[str, bytes] | None = None,
                  current_state_key_id='state-v1', advance_callers=frozenset(), initialize=False):
         self.path = Path(path)
         if state_keys is None and type(state_key) is bytes:
             state_keys = {'state-v1': state_key}
-        if (not isinstance(caller_keys, dict) or not caller_keys or
-                any(type(name) is not str or not name or type(key) is not bytes or len(key) != 32
-                    for name, key in caller_keys.items()) or
+        if not isinstance(caller_keys, dict) or not caller_keys:
+            raise WitnessDenied('witness key configuration unavailable')
+        caller_keyrings = {}
+        for name, keys in caller_keys.items():
+            if type(name) is not str or not name:
+                raise WitnessDenied('witness key configuration unavailable')
+            keys = {'caller-v1': keys} if type(keys) is bytes else keys
+            if (not isinstance(keys, dict) or not keys or
+                    any(type(key_id) is not str or not key_id or type(key) is not bytes or len(key) != 32
+                        for key_id, key in keys.items())):
+                raise WitnessDenied('witness key configuration unavailable')
+            caller_keyrings[name] = dict(keys)
+        if current_caller_key_ids is None:
+            current_caller_key_ids = {name: 'caller-v1' for name in caller_keyrings}
+        if (not isinstance(current_caller_key_ids, dict) or
+                set(current_caller_key_ids) != set(caller_keyrings) or
+                any(type(key_id) is not str or key_id not in caller_keyrings[name]
+                    for name, key_id in current_caller_key_ids.items()) or
                 not isinstance(state_keys, dict) or not state_keys or
                 any(type(key_id) is not str or not key_id or type(key) is not bytes or len(key) != 32
                     for key_id, key in state_keys.items()) or
                 type(current_state_key_id) is not str or current_state_key_id not in state_keys or
                 not isinstance(advance_callers, (set, frozenset)) or
-                any(type(name) is not str or name not in caller_keys for name in advance_callers)):
+                any(type(name) is not str or name not in caller_keyrings for name in advance_callers)):
             raise WitnessDenied('witness key configuration unavailable')
-        self._caller_keys = dict(caller_keys)
+        self._caller_keys = caller_keyrings
+        self._current_caller_key_ids = dict(current_caller_key_ids)
         self._state_keys = dict(state_keys)
         self._current_state_key_id = current_state_key_id
         self._advance_callers = frozenset(advance_callers)
@@ -145,19 +163,19 @@ class DurableLocalRecoveryWitness:
         db.execute('PRAGMA foreign_keys=ON')
         return db
 
-    def _authenticate(self, caller_id, request, mac):
+    def _authenticate(self, caller_id, request, mac, caller_key_id='caller-v1'):
         if self._available is not True:
             raise WitnessDenied('witness unavailable')
-        key = self._caller_keys.get(caller_id) if type(caller_id) is str else None
-        expected = request_mac(key, caller_id, request) if key else ''
+        key = self._caller_keys.get(caller_id, {}).get(caller_key_id) if type(caller_id) is str and type(caller_key_id) is str else None
+        expected = request_mac(key, caller_id, request, caller_key_id) if key else ''
         if type(mac) is not str or not hmac.compare_digest(expected, mac):
             raise WitnessDenied('witness caller authentication failed')
         return key
 
     @staticmethod
-    def _envelope(key, body):
-        mac = hmac.digest(key, _RESPONSE_DOMAIN + _canonical(body), 'sha256').hex()
-        return {'body': body, 'mac': mac}
+    def _envelope(key, body, key_id='caller-v1'):
+        mac = hmac.digest(key, _RESPONSE_DOMAIN + key_id.encode() + b'\0' + _canonical(body), 'sha256').hex()
+        return {'body': body, 'key_id': key_id, 'mac': mac}
 
     def _ticket_mac(self, generation, ledger_id, invocation_id, intent_sha256, nonce,
                     state_key_id):
@@ -174,8 +192,8 @@ class DurableLocalRecoveryWitness:
                    'VALUES(?,?,?,?,?)', (event, generation, request_id, invocation_id,
                                          hashlib.sha256(_canonical(binding)).hexdigest()))
 
-    def generation(self, *, caller_id, request, mac):
-        key = self._authenticate(caller_id, request, mac)
+    def generation(self, *, caller_id, request, mac, caller_key_id='caller-v1'):
+        key = self._authenticate(caller_id, request, mac, caller_key_id)
         if request != {'operation': 'generation'}:
             raise WitnessDenied('witness request unavailable')
         try:
@@ -183,12 +201,12 @@ class DurableLocalRecoveryWitness:
                 row = db.execute('SELECT generation FROM witness_state WHERE singleton=1').fetchone()
                 if row is None:
                     raise WitnessDenied('witness state unavailable')
-                return self._envelope(key, {'generation': row['generation'], 'status': 'current'})
+                return self._envelope(key, {'generation': row['generation'], 'status': 'current'}, caller_key_id)
         except (sqlite3.Error, OSError):
             raise WitnessDenied('witness state unavailable') from None
 
-    def reserve(self, *, caller_id, request, mac):
-        key = self._authenticate(caller_id, request, mac)
+    def reserve(self, *, caller_id, request, mac, caller_key_id='caller-v1'):
+        key = self._authenticate(caller_id, request, mac, caller_key_id)
         if type(request) is not dict or set(request) != {'operation','request_id','ledger_id','invocation_id','intent_sha256'} or request.get('operation') != 'reserve':
             raise WitnessDenied('witness request unavailable')
         request_id = _identity(request['request_id'], 'request identity')
@@ -209,7 +227,7 @@ class DurableLocalRecoveryWitness:
                         raise WitnessDenied('witness reservation conflict or consumed invocation')
                     body = self._reservation_body(old)
                     db.commit()
-                    return self._envelope(key, body)
+                    return self._envelope(key, body, caller_key_id)
                 by_invocation = db.execute('SELECT * FROM reservations WHERE invocation_id=?', (invocation_id,)).fetchone()
                 if by_invocation:
                     if by_invocation['consumed']:
@@ -226,7 +244,7 @@ class DurableLocalRecoveryWitness:
                 row = db.execute('SELECT * FROM reservations WHERE request_id=?', (request_id,)).fetchone()
                 body = self._reservation_body(row)
                 db.commit()
-                return self._envelope(key, body)
+                return self._envelope(key, body, caller_key_id)
         except WitnessDenied:
             raise
         except (sqlite3.Error, OSError):
@@ -241,8 +259,8 @@ class DurableLocalRecoveryWitness:
                 'nonce': row['nonce'],
                 'ticket_mac': row['ticket_mac']}
 
-    def consume(self, *, caller_id, request, mac):
-        key = self._authenticate(caller_id, request, mac)
+    def consume(self, *, caller_id, request, mac, caller_key_id='caller-v1'):
+        key = self._authenticate(caller_id, request, mac, caller_key_id)
         expected_fields = {'operation','request_id','ledger_id','invocation_id',
             'intent_sha256','generation','state_key_id','nonce','ticket_mac'}
         if type(request) is not dict or set(request) != expected_fields or request.get('operation') != 'consume':
@@ -282,14 +300,14 @@ class DurableLocalRecoveryWitness:
                 db.commit()
                 body = {'status': 'spent', 'generation': row['generation'],
                         'request_id': request_id, 'invocation_id': invocation_id}
-                return self._envelope(key, body)
+                return self._envelope(key, body, caller_key_id)
         except WitnessDenied:
             raise
         except (sqlite3.Error, OSError):
             raise WitnessDenied('witness state unavailable') from None
 
-    def advance_generation(self, *, caller_id, request, mac):
-        key = self._authenticate(caller_id, request, mac)
+    def advance_generation(self, *, caller_id, request, mac, caller_key_id='caller-v1'):
+        key = self._authenticate(caller_id, request, mac, caller_key_id)
         if caller_id not in self._advance_callers:
             raise WitnessDenied('witness recovery administrator unavailable')
         if (type(request) is not dict or set(request) != {'operation','request_id'} or
@@ -306,7 +324,7 @@ class DurableLocalRecoveryWitness:
                         raise WitnessDenied('witness generation operation conflict')
                     db.commit()
                     return self._envelope(key, {'generation': previous['generation'],
-                        'request_id': request_id, 'status': 'advanced'})
+                        'request_id': request_id, 'status': 'advanced'}, caller_key_id)
                 row = db.execute('SELECT generation FROM witness_state WHERE singleton=1').fetchone()
                 if row is None or row['generation'] >= _MAX_GENERATION:
                     raise WitnessDenied('witness generation unavailable')
@@ -318,7 +336,7 @@ class DurableLocalRecoveryWitness:
                     {'request_id': request_id, 'generation': generation})
                 db.commit()
                 return self._envelope(key, {'generation': generation,
-                    'request_id': request_id, 'status': 'advanced'})
+                    'request_id': request_id, 'status': 'advanced'}, caller_key_id)
         except WitnessDenied:
             raise
         except (sqlite3.Error, OSError):

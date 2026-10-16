@@ -40,17 +40,25 @@ def _read_frame(connection):
 
 class UnixWitnessClient:
     """Authenticated fixture client. No TCP/IP connection is opened."""
-    def __init__(self, socket_path, *, caller_id, key, timeout=2):
-        if type(caller_id) is not str or not caller_id or type(key) is not bytes or len(key) != 32:
+    def __init__(self, socket_path, *, caller_id, key=None, keys=None,
+                 current_key_id='caller-v1', timeout=2):
+        if type(key) is bytes and keys is None:
+            keys = {'caller-v1': key}
+        if (type(caller_id) is not str or not caller_id or not isinstance(keys, dict) or
+                not keys or any(type(key_id) is not str or not key_id or
+                type(value) is not bytes or len(value) != 32 for key_id, value in keys.items()) or
+                current_key_id not in keys):
             raise WitnessTransportDenied('witness client identity unavailable')
         self.socket_path = str(socket_path)
-        self.caller_id, self.key, self.timeout = caller_id, key, timeout
+        self.caller_id, self.keys, self.current_key_id, self.timeout = caller_id, dict(keys), current_key_id, timeout
 
     def request(self, request):
         if type(request) is not dict:
             raise WitnessTransportDenied('witness request unavailable')
-        frame = {'caller_id': self.caller_id, 'request': request,
-                 'mac': request_mac(self.key, self.caller_id, request)}
+        key = self.keys[self.current_key_id]
+        frame = {'caller_id': self.caller_id, 'caller_key_id': self.current_key_id,
+                 'request': request,
+                 'mac': request_mac(key, self.caller_id, request, self.current_key_id)}
         payload = _json_bytes(frame) + b'\n'
         if len(payload) > _MAX_FRAME:
             raise WitnessTransportDenied('witness transport frame unavailable')
@@ -67,7 +75,7 @@ class UnixWitnessClient:
         if type(response) is not dict or set(response) == {'error'}:
             raise WitnessTransportDenied('witness request denied or response unavailable')
         try:
-            return verify_response(self.key, response)
+            return verify_response(key, response, self.current_key_id)
         except WitnessDenied:
             raise WitnessTransportDenied('witness response authentication failed') from None
 
@@ -84,7 +92,7 @@ class _UnixHandler(socketserver.BaseRequestHandler):
             if peer_uid != self.server.allowed_uid:
                 raise WitnessTransportDenied('peer identity unavailable')
             envelope = json.loads(_read_frame(connection).decode('ascii'))
-            if (type(envelope) is not dict or set(envelope) != {'caller_id','request','mac'} or
+            if (type(envelope) is not dict or set(envelope) != {'caller_id','caller_key_id','request','mac'} or
                     type(envelope['caller_id']) is not str or type(envelope['request']) is not dict):
                 raise WitnessTransportDenied('witness request unavailable')
             operation = envelope['request'].get('operation')
@@ -96,7 +104,7 @@ class _UnixHandler(socketserver.BaseRequestHandler):
             if method is None:
                 raise WitnessDenied('witness request unavailable')
             response = method(caller_id=envelope['caller_id'], request=envelope['request'],
-                              mac=envelope['mac'])
+                              mac=envelope['mac'], caller_key_id=envelope['caller_key_id'])
         except (WitnessDenied, WitnessTransportDenied, OSError, UnicodeError,
                 json.JSONDecodeError, ValueError, KeyError, TypeError):
             response = {'error': 'denied'}
@@ -191,8 +199,16 @@ def serve_config(path):
             stat.S_IMODE(info.st_mode) != 0o600):
         raise WitnessTransportDenied('private witness config required')
     config = json.loads(config_path.read_text())
+    if 'caller_keyrings' in config:
+        caller_keys = {name: {key_id: bytes.fromhex(value) for key_id, value in keys.items()}
+                       for name, keys in config['caller_keyrings'].items()}
+        current_caller_key_ids = config['current_caller_key_ids']
+    else:
+        caller_keys = {name: bytes.fromhex(value) for name, value in config['caller_keys'].items()}
+        current_caller_key_ids = None
     witness_config = {
-        'caller_keys': {name: bytes.fromhex(value) for name, value in config['caller_keys'].items()},
+        'caller_keys': caller_keys,
+        'current_caller_key_ids': current_caller_key_ids,
         'advance_callers': frozenset(config.get('advance_callers', [])),
     }
     if 'state_keys' in config:
