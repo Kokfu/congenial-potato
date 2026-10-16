@@ -121,6 +121,8 @@ class _UnixHandler(socketserver.BaseRequestHandler):
                     type(envelope['caller_id']) is not str or type(envelope['request']) is not dict or
                     type(envelope['exchange_nonce']) is not str):
                 raise WitnessTransportDenied('witness request unavailable')
+            if self.server._stop.is_set():
+                raise WitnessTransportDenied('witness server stopped')
             operation = envelope['request'].get('operation')
             methods = {'generation': self.server.witness.generation,
                        'reserve': self.server.witness.reserve,
