@@ -9,6 +9,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -910,3 +911,70 @@ def test_server_expires_partial_frame_without_mutation_and_serves_next_client(tm
         with sqlite3.connect(witness.path) as db:
             assert db.execute('SELECT count(*) FROM reservations').fetchone()[0] == 0
             assert db.execute('SELECT count(*) FROM witness_events').fetchone()[0] == 0
+
+
+def test_connection_capacity_rejects_excess_and_recovers_after_handler_finishes(tmp_path, monkeypatch):
+    monkeypatch.setattr(transport_module, '_MAX_CONNECTIONS', 1, raising=False)
+    monkeypatch.setattr(transport_module, '_FRAME_TIMEOUT', 5.0)
+    started, finished = threading.Event(), threading.Event()
+    original_handle = LocalWitnessUnixServer._handle
+
+    def observed_handle(self, connection):
+        started.set()
+        try:
+            original_handle(self, connection)
+        finally:
+            finished.set()
+
+    monkeypatch.setattr(LocalWitnessUnixServer, '_handle', observed_handle)
+    directory = tmp_path/'private'
+    directory.mkdir(mode=0o700)
+    path = directory/'witness.sock'
+    witness = DurableLocalRecoveryWitness(tmp_path/'state.sqlite3',
+        caller_keys={CALLER: CALLER_KEY}, state_key=STATE_KEY, initialize=True)
+    before = witness.path.read_bytes()
+    with LocalWitnessUnixServer(witness, path):
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as first:
+            first.settimeout(2)
+            first.connect(str(path))
+            first.sendall(b'{')
+            assert started.wait(timeout=2), 'first connection did not enter the handler'
+            client = UnixWitnessClient(path, caller_id=CALLER, key=CALLER_KEY)
+            with pytest.raises(WitnessTransportDenied):
+                client.request({'operation': 'generation'})
+            first.sendall(b'}\n')
+            assert json.loads(transport_module._read_frame(first)) == {'error': 'denied'}
+            assert finished.wait(timeout=2), 'first handler did not release capacity'
+        assert client.request({'operation': 'generation'})['generation'] == 1
+    assert witness.path.read_bytes() == before
+
+
+def test_failed_handler_thread_start_releases_connection_capacity(tmp_path, monkeypatch):
+    monkeypatch.setattr(transport_module, '_MAX_CONNECTIONS', 1)
+    directory = tmp_path/'private'
+    directory.mkdir(mode=0o700)
+    path = directory/'witness.sock'
+    witness = DurableLocalRecoveryWitness(tmp_path/'state.sqlite3',
+        caller_keys={CALLER: CALLER_KEY}, state_key=STATE_KEY, initialize=True)
+    before = witness.path.read_bytes()
+    real_thread = threading.Thread
+    fail_next = True
+
+    class FailedStart:
+        def start(self):
+            raise RuntimeError('fixture cannot start a handler thread')
+
+    def create_thread(*args, **kwargs):
+        nonlocal fail_next
+        if fail_next:
+            fail_next = False
+            return FailedStart()
+        return real_thread(*args, **kwargs)
+
+    with LocalWitnessUnixServer(witness, path):
+        monkeypatch.setattr(transport_module.threading, 'Thread', create_thread)
+        client = UnixWitnessClient(path, caller_id=CALLER, key=CALLER_KEY)
+        with pytest.raises(WitnessTransportDenied):
+            client.request({'operation': 'generation'})
+        assert client.request({'operation': 'generation'})['generation'] == 1
+    assert witness.path.read_bytes() == before

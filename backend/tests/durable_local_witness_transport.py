@@ -16,6 +16,7 @@ from durable_local_recovery_witness import (DurableLocalRecoveryWitness,
 
 _MAX_FRAME = 16 * 1024
 _FRAME_TIMEOUT = 2.0
+_MAX_CONNECTIONS = 32
 
 
 class WitnessTransportDenied(ConnectionError):
@@ -150,6 +151,7 @@ class LocalWitnessUnixServer:
         self._socket = None
         self._thread = None
         self._socket_identity = None
+        self._connection_slots = threading.BoundedSemaphore(_MAX_CONNECTIONS)
 
     def start(self):
         parent = self.socket_path.parent
@@ -205,13 +207,26 @@ class LocalWitnessUnixServer:
                 continue
             except OSError:
                 return
-            thread = threading.Thread(target=self._handle, args=(connection,), daemon=True)
-            thread.start()
+            if self._stop.is_set():
+                connection.close()
+                return
+            if not self._connection_slots.acquire(blocking=False):
+                connection.close()
+                continue
+            try:
+                thread = threading.Thread(target=self._handle, args=(connection,), daemon=True)
+                thread.start()
+            except (RuntimeError, OSError):
+                connection.close()
+                self._connection_slots.release()
 
     def _handle(self, connection):
-        with connection:
-            connection.settimeout(_FRAME_TIMEOUT)
-            _UnixHandler(connection, ('local', 0), self)
+        try:
+            with connection:
+                connection.settimeout(_FRAME_TIMEOUT)
+                _UnixHandler(connection, ('local', 0), self)
+        finally:
+            self._connection_slots.release()
 
     def close(self):
         self._stop.set()
