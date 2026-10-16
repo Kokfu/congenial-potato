@@ -16,8 +16,8 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 
-_REQUEST_DOMAIN = b'workforce.synthetic.write.witness.request.v1\0'
-_EXCHANGE_REQUEST_DOMAIN = b'workforce.synthetic.write.witness.exchange.request.v1\0'
+_REQUEST_DOMAIN = b'workforce.synthetic.write.witness.request.v2\0'
+_EXCHANGE_REQUEST_DOMAIN = b'workforce.synthetic.write.witness.exchange.request.v2\0'
 _RESPONSE_DOMAIN = b'workforce.synthetic.write.witness.response.v2\0'
 _TICKET_DOMAIN = b'workforce.synthetic.write.witness.ticket.v1\0'
 _MAX_GENERATION = 2**63 - 1
@@ -49,13 +49,13 @@ def _digest(value):
 
 def request_mac(key: bytes, caller_id: str, request: dict, key_id='caller-v1', *, exchange_nonce=None) -> str:
     """Fixture client helper. Callers must keep the key outside request data."""
-    domain, message = _REQUEST_DOMAIN, request
+    domain = _REQUEST_DOMAIN
+    message = {'caller_id': caller_id, 'caller_key_id': key_id, 'request': request}
     if exchange_nonce is not None:
         _identity(exchange_nonce, 'exchange nonce')
         domain = _EXCHANGE_REQUEST_DOMAIN
-        message = {'exchange_nonce': exchange_nonce, 'request': request}
-    return hmac.digest(key, domain + caller_id.encode() + b'\0' + key_id.encode() + b'\0' +
-                       _canonical(message), 'sha256').hex()
+        message['exchange_nonce'] = exchange_nonce
+    return hmac.digest(key, domain + _canonical(message), 'sha256').hex()
 
 
 def verify_response(key: bytes, envelope: dict, key_id='caller-v1', *, expected_request_mac=None) -> dict:
