@@ -1,6 +1,6 @@
-# Local witness acceptance matrix: Phase 8.4bf
+# Local witness acceptance matrix: Phase 8.4bg
 
-Date: 2026-10-16. Branch: `phase-8-witness-postgres-lost-consume-reply`. Parent: draft PR [#129](https://github.com/Kokfu/congenial-potato/pull/129), commit `c5ef2030473707ad594b40fdc22977425d45dfd5`.
+Date: 2026-10-16. Branch: `phase-8-witness-postgres-check-command`. Parent: draft PR [#130](https://github.com/Kokfu/congenial-potato/pull/130), commit `33a56137ee140c71523c63bacb334ecfa2ad759f`.
 
 This is the current local synthetic checkpoint. The fixture protocol, same-host transport and fake-ledger drills do not constitute an independent recovery service or product activation. Expected rollback and caller-effect limitations are recorded separately below.
 
@@ -16,7 +16,9 @@ The latest six-module local runtime check is Phase 8.4bb: **120 local cases pass
 
 Phase 8.4be additionally passed the **complete 34-case admission file in 55.79s**, including those six restore cases and migration safeguards; see [admission regression checkpoint](witness-admission-regression-checkpoint.md). These counts overlap and must not be added together.
 
-Phase 8.4bf adds an abandoned consume-reply case before PostgreSQL admission: **7 focused cases passed in 11.66s**, including the six restore regressions. PostgreSQL admission/control/audit and the fake-ledger file remain absent after denied retries, while witness consumption persists; see [abandoned reply evidence](witness-postgres-lost-consume-reply-validation.md). The full admission file was not rerun after adding this case.
+Phase 8.4bf adds an abandoned consume-reply case before PostgreSQL admission: **7 focused cases passed in 11.66s**, including the six restore regressions. PostgreSQL admission/control/audit and the fake-ledger file remain absent after denied retries, while witness consumption persists; see [abandoned reply evidence](witness-postgres-lost-consume-reply-validation.md). That increment did not rerun the full admission file.
+
+The [repository PostgreSQL command](witness-postgres-check-command.md) now reproduces setup/migrations/checks/cleanup. Phase 8.4bg passed its default **7 cases in 15.55s** and full admission **35 cases in 72.76s**, with a 65-file static product import check for each, and verified cleanup on a controlled failure. These are the current PostgreSQL-backed results; they include, rather than add to, earlier restore/admission counts.
 
 | Collected module | Cases |
 | --- | ---: |
