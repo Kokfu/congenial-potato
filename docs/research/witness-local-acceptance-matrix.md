@@ -1,6 +1,6 @@
-# Local witness acceptance matrix: Phase 8.4bl
+# Local witness acceptance matrix: Phase 8.4bm
 
-Date: 2026-10-17. Branch: `phase-8-witness-initialization-mode`. Parent: draft PR [#135](https://github.com/Kokfu/congenial-potato/pull/135), commit `a5252ea47779ce670ef9b8aa70e98d7c31f0394a`.
+Date: 2026-10-17. Branch: `phase-8-witness-ticket-mac-validation`. Parent: draft PR [#136](https://github.com/Kokfu/congenial-potato/pull/136), commit `74faf2969bfa5b39f7bb4e3788fd9c03d2fc3da4`.
 
 This is the current local synthetic checkpoint. The fixture protocol, same-host transport and fake-ledger drills do not constitute an independent recovery service or product activation. Expected rollback and caller-effect limitations are recorded separately below.
 
@@ -12,7 +12,7 @@ This is the current local synthetic checkpoint. The fixture protocol, same-host 
 
 The [fixed local checker](witness-local-check-command.md) tests the checkout directly, isolates pytest options/plugins/configuration, excludes PostgreSQL conftest loading and compiles selected files to a temporary directory. Dependency setup is documented with that command.
 
-The latest six-module local runtime check is Phase 8.4bl: **151 local cases passed in 5.67s**, **65 product Python files passed the static fixture-import guard**, and **15 files compiled**. Separately, Phase 8.4bd passed **6 PostgreSQL-backed witness restore-wrapper cases in 9.76s** (three direct and three Unix-RPC), after fresh application/workflow migrations; see [RPC cases and limits](witness-postgres-rpc-restore-validation.md) and [database setup](witness-postgres-restore-wrapper-validation.md). The local command was rerun after fixing missing-key/empty-MAC authentication; see [authentication fix](witness-missing-auth-key-denial-validation.md) and [guard coverage](witness-admission-import-guard-validation.md). Collection-only inspection verified the exact six-module, 151-case inventory; changed-document links plus `git diff --check` passed.
+The latest six-module local runtime check is Phase 8.4bm: **153 local cases passed in 6.98s**, **65 product Python files passed the static fixture-import guard**, and **15 files compiled**. Separately, Phase 8.4bd passed **6 PostgreSQL-backed witness restore-wrapper cases in 9.76s** (three direct and three Unix-RPC), after fresh application/workflow migrations; see [RPC cases and limits](witness-postgres-rpc-restore-validation.md) and [database setup](witness-postgres-restore-wrapper-validation.md). The local command was rerun after fixing missing-key/empty-MAC authentication; see [authentication fix](witness-missing-auth-key-denial-validation.md) and [guard coverage](witness-admission-import-guard-validation.md). Collection-only inspection verified the exact six-module, 153-case inventory; changed-document links plus `git diff --check` passed.
 
 Phase 8.4be additionally passed the **complete 34-case admission file in 55.79s**, including those six restore cases and migration safeguards; see [admission regression checkpoint](witness-admission-regression-checkpoint.md). These counts overlap and must not be added together.
 
@@ -20,17 +20,17 @@ Phase 8.4bf adds an abandoned consume-reply case before PostgreSQL admission: **
 
 The [repository PostgreSQL command](witness-postgres-check-command.md) now reproduces setup/migrations/checks/cleanup. Phase 8.4bg passed its default **7 cases in 15.55s** and full admission **35 cases in 72.76s**, with a 65-file static product import check for each, and verified cleanup on a controlled failure. These are historical PostgreSQL-backed results preceding the Phase 8.4bi authentication fix; the full admission file was not rerun after that fix. They include, rather than add to, earlier restore/admission counts.
 
-Phase 8.4bj reran the default PostgreSQL command after the authentication fix: **7 passed, 28 deselected in 12.72s**, with 65 product-source checks, successful migrations and fixture cleanup. See [current focused PostgreSQL checkpoint](witness-auth-postgres-checkpoint.md). This updates the selected wrapper/RPC/lost-reply cases only; the 35-case whole-file result above remains historical.
+Phase 8.4bj reran the default PostgreSQL command after the authentication fix: **7 passed, 28 deselected in 12.72s**, with 65 product-source checks, successful migrations and fixture cleanup. See [current focused PostgreSQL checkpoint](witness-auth-postgres-checkpoint.md). This predates initialization-mode and ticket-MAC validation. It updates the selected wrapper/RPC/lost-reply cases only; the 35-case whole-file result above remains historical.
 
 | Collected module | Cases |
 | --- | ---: |
-| [Durable protocol](../../backend/tests/test_durable_local_recovery_witness.py) | 58 |
+| [Durable protocol](../../backend/tests/test_durable_local_recovery_witness.py) | 59 |
 | [Fake-ledger recovery](../../backend/tests/test_durable_witness_fake_ledger_recovery.py) | 13 |
-| [Local transport/process lifecycle](../../backend/tests/test_durable_local_witness_transport.py) | 46 |
+| [Local transport/process lifecycle](../../backend/tests/test_durable_local_witness_transport.py) | 47 |
 | [Pending-snapshot audit rollback](../../backend/tests/test_witness_pending_snapshot_audit_rollback.py) | 1 |
 | [Response parsing/binding/contracts](../../backend/tests/test_witness_rpc_response_validation.py) | 24 |
 | [In-memory protocol regressions](../../backend/tests/test_synthetic_write_recovery_witness.py) | 9 |
-| **Total** | **151** |
+| **Total** | **153** |
 
 ## Current fixture behavior and evidence
 
@@ -44,6 +44,7 @@ Phase 8.4bj reran the default PostgreSQL command after the authentication fix: *
 | Framing/decoding | Byte cap, duplicate fields, non-finite numeric rejection and decode-error normalization | [RPC JSON](witness-rpc-json-validation.md), [frame size](witness-oversize-frame-validation.md) |
 | Response correlation | v2 signed request binding plus fresh authenticated exchange nonce; stale/mismatched replies reject | [Request binding](witness-rpc-response-binding-validation.md), [exchange freshness](witness-rpc-exchange-freshness-validation.md) |
 | Response metadata | Exact operation fields/status, integer generation range, canonical IDs, echoed bindings and ticket/digest shape | [Body contracts](witness-response-body-contract-validation.md) |
+| Consume ticket shape | Malformed authenticated MAC fields deny without consuming a pending ticket; valid consume and replay fencing remain intact | [Ticket MAC validation](witness-ticket-mac-validation.md) |
 | Initialization mode | Direct constructor requires exact boolean; invalid modes neither create missing state nor alter retained state | [Explicit initialization](witness-initialization-mode-validation.md) |
 | Endpoint startup | Active/uncertain socket refusal, stable stale-path inode check, authenticated process readiness | [Socket guard](witness-socket-liveness-guard-validation.md) |
 | Local receive/load | Monotonic frame receive budget, 32 active-handler cap and slot recovery | [Receive deadline](witness-frame-receive-deadline-validation.md), [capacity](witness-connection-cap-validation.md) |

@@ -31,6 +31,35 @@ CALLER_KEY = b'u' * 32
 STATE_KEY = b'v' * 32
 
 
+def test_malformed_ticket_mac_rpc_preserves_pending_ticket_and_service(tmp_path):
+    state = tmp_path/'witness.sqlite3'
+    witness = DurableLocalRecoveryWitness(state, caller_keys={CALLER: CALLER_KEY},
+        state_key=STATE_KEY, initialize=True)
+    server = LocalWitnessUnixServer(witness, tmp_path/'witness.sock').start()
+    client = UnixWitnessClient(tmp_path/'witness.sock', caller_id=CALLER, key=CALLER_KEY)
+    try:
+        ticket = client.request({'operation': 'reserve', 'request_id': str(uuid4()),
+            'ledger_id': str(uuid4()), 'invocation_id': str(uuid4()), 'intent_sha256': 'a'*64})
+        consume = {'operation': 'consume', **{key: value for key, value in ticket.items()
+            if key != 'status'}}
+        before = state.read_bytes()
+        for bad in ('é'*64, '\ud800'*64, '', 'a'*63, 'a'*65, 'g'*64,
+                    'A'*64, None, 0, [], {}):
+            with pytest.raises(WitnessTransportDenied):
+                client.request({**consume, 'ticket_mac': bad})
+            assert state.read_bytes() == before
+            assert client.request({'operation': 'generation'})['generation'] == 1
+        assert client.request(consume)['status'] == 'spent'
+        with pytest.raises(WitnessTransportDenied):
+            client.request(consume)
+        with sqlite3.connect(state) as db:
+            assert db.execute('SELECT consumed FROM reservations').fetchall() == [(1,)]
+            assert db.execute('SELECT event FROM witness_events ORDER BY sequence').fetchall() == [
+                ('reserved',), ('consumed',)]
+    finally:
+        server.close()
+
+
 def start_server(config_path):
     source_dir = Path(transport_module.__file__).parent
     server_script = source_dir/'run_durable_local_witness_server.py'

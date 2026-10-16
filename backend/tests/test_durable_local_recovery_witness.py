@@ -594,6 +594,23 @@ def test_malformed_mac_denies_with_protocol_error_before_mutation(tmp_path, oper
     assert call(witness, consume_request(permit))['status'] == 'spent'
 
 
+def test_malformed_ticket_mac_denies_without_burning_pending_reservation(tmp_path):
+    path = tmp_path/'witness.sqlite3'
+    witness = create(path)
+    permit = call(witness, reserve_request())
+    before = path.read_bytes()
+    for bad in ('é'*64, '\ud800'*64, '', 'a'*63, 'a'*65, 'g'*64,
+                'A'*64, None, 0, [], {}):
+        request = {**consume_request(permit), 'ticket_mac': bad}
+        # Authenticate each malformed body so rejection exercises the ticket boundary.
+        with pytest.raises(WitnessDenied, match='ticket binding'):
+            call(witness, request)
+        assert path.read_bytes() == before
+    assert call(reopen(path), consume_request(permit))['status'] == 'spent'
+    with pytest.raises(WitnessDenied, match='already consumed'):
+        call(witness, consume_request(permit))
+
+
 @pytest.mark.parametrize('mode', ['false', 'true', 0, 1, None, [], {}, b'false'],
     ids=['text-false', 'text-true', 'zero', 'one', 'none', 'list', 'dict', 'bytes'])
 def test_initialization_requires_explicit_boolean_without_filesystem_changes(tmp_path, mode):

@@ -378,6 +378,9 @@ class DurableLocalRecoveryWitness:
         if type(request['generation']) is not int or not 1 <= request['generation'] <= _MAX_GENERATION:
             raise WitnessDenied('witness generation unavailable')
         _identity(request['nonce'], 'nonce')
+        if (type(request['ticket_mac']) is not str or
+                re.fullmatch(r'[0-9a-f]{64}', request['ticket_mac']) is None):
+            raise WitnessDenied('witness ticket binding unavailable')
         try:
             with self._connect() as db:
                 db.execute('BEGIN IMMEDIATE')
@@ -395,7 +398,6 @@ class DurableLocalRecoveryWitness:
                     (row['ledger_id'],row['invocation_id'],row['intent_sha256']) != binding or
                     row['generation'] != request['generation'] or row['generation'] != state['generation'] or
                     row['state_key_id'] != request['state_key_id'] or row['nonce'] != request['nonce'] or
-                    type(request['ticket_mac']) is not str or
                     not hmac.compare_digest(row['ticket_mac'], request['ticket_mac']) or
                     not hmac.compare_digest(valid_ticket, row['ticket_mac'])):
                     raise WitnessDenied('witness ticket binding unavailable')
