@@ -66,19 +66,26 @@ def verify_response(key: bytes, envelope: dict) -> dict:
 class DurableLocalRecoveryWitness:
     """SQLite-backed protocol fixture with caller authentication and atomic state."""
 
-    def __init__(self, path, *, caller_keys: dict[str, bytes], state_key: bytes,
-                 advance_callers=frozenset(), initialize=False):
+    def __init__(self, path, *, caller_keys: dict[str, bytes], state_key: bytes | None = None,
+                 state_keys: dict[str, bytes] | None = None,
+                 current_state_key_id='state-v1', advance_callers=frozenset(), initialize=False):
         self.path = Path(path)
+        if state_keys is None and type(state_key) is bytes:
+            state_keys = {'state-v1': state_key}
         if (not isinstance(caller_keys, dict) or not caller_keys or
                 any(type(name) is not str or not name or type(key) is not bytes or len(key) != 32
                     for name, key in caller_keys.items()) or
-                type(state_key) is not bytes or len(state_key) != 32 or
+                not isinstance(state_keys, dict) or not state_keys or
+                any(type(key_id) is not str or not key_id or type(key) is not bytes or len(key) != 32
+                    for key_id, key in state_keys.items()) or
+                type(current_state_key_id) is not str or current_state_key_id not in state_keys or
                 not isinstance(advance_callers, (set, frozenset)) or
                 any(type(name) is not str or name not in caller_keys for name in advance_callers)):
             raise WitnessDenied('witness key configuration unavailable')
         self._caller_keys = dict(caller_keys)
+        self._state_keys = dict(state_keys)
+        self._current_state_key_id = current_state_key_id
         self._advance_callers = frozenset(advance_callers)
-        self._state_key = state_key
         self._available = True
         if initialize:
             self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -97,6 +104,7 @@ class DurableLocalRecoveryWitness:
                         invocation_id TEXT NOT NULL UNIQUE,
                         intent_sha256 TEXT NOT NULL,
                         generation INTEGER NOT NULL,
+                        state_key_id TEXT NOT NULL,
                         nonce TEXT NOT NULL,
                         ticket_mac TEXT NOT NULL,
                         consumed INTEGER NOT NULL DEFAULT 0 CHECK(consumed IN (0,1))
@@ -151,11 +159,15 @@ class DurableLocalRecoveryWitness:
         mac = hmac.digest(key, _RESPONSE_DOMAIN + _canonical(body), 'sha256').hex()
         return {'body': body, 'mac': mac}
 
-    def _ticket_mac(self, generation, ledger_id, invocation_id, intent_sha256, nonce):
+    def _ticket_mac(self, generation, ledger_id, invocation_id, intent_sha256, nonce,
+                    state_key_id):
+        state_key = self._state_keys.get(state_key_id)
+        if state_key is None:
+            raise WitnessDenied('witness state key unavailable')
         body = {'generation': generation, 'ledger_id': ledger_id,
                 'invocation_id': invocation_id, 'intent_sha256': intent_sha256,
-                'nonce': nonce}
-        return hmac.digest(self._state_key, _TICKET_DOMAIN + _canonical(body), 'sha256').hex()
+                'nonce': nonce, 'state_key_id': state_key_id}
+        return hmac.digest(state_key, _TICKET_DOMAIN + _canonical(body), 'sha256').hex()
 
     def _record(self, db, event, generation, request_id, invocation_id, binding):
         db.execute('INSERT INTO witness_events(event,generation,request_id,invocation_id,binding_sha256) '
@@ -204,9 +216,12 @@ class DurableLocalRecoveryWitness:
                         raise WitnessDenied('witness invocation already consumed or unknown')
                     raise WitnessDenied('witness invocation already reserved')
                 nonce = str(uuid4())
-                ticket_mac = self._ticket_mac(generation, ledger_id, invocation_id, intent_sha256, nonce)
-                db.execute('INSERT INTO reservations(request_id,caller_id,ledger_id,invocation_id,intent_sha256,generation,nonce,ticket_mac) VALUES(?,?,?,?,?,?,?,?)',
-                           (request_id,caller_id,ledger_id,invocation_id,intent_sha256,generation,nonce,ticket_mac))
+                state_key_id = self._current_state_key_id
+                ticket_mac = self._ticket_mac(generation, ledger_id, invocation_id,
+                    intent_sha256, nonce, state_key_id)
+                db.execute('INSERT INTO reservations(request_id,caller_id,ledger_id,invocation_id,intent_sha256,generation,state_key_id,nonce,ticket_mac) VALUES(?,?,?,?,?,?,?,?,?)',
+                           (request_id,caller_id,ledger_id,invocation_id,intent_sha256,
+                            generation,state_key_id,nonce,ticket_mac))
                 self._record(db, 'reserved', generation, request_id, invocation_id, binding)
                 row = db.execute('SELECT * FROM reservations WHERE request_id=?', (request_id,)).fetchone()
                 body = self._reservation_body(row)
@@ -222,12 +237,14 @@ class DurableLocalRecoveryWitness:
         return {'status': 'spent' if row['consumed'] else 'reserved',
                 'generation': row['generation'], 'request_id': row['request_id'],
                 'ledger_id': row['ledger_id'], 'invocation_id': row['invocation_id'],
-                'intent_sha256': row['intent_sha256'], 'nonce': row['nonce'],
+                'intent_sha256': row['intent_sha256'], 'state_key_id': row['state_key_id'],
+                'nonce': row['nonce'],
                 'ticket_mac': row['ticket_mac']}
 
     def consume(self, *, caller_id, request, mac):
         key = self._authenticate(caller_id, request, mac)
-        expected_fields = {'operation','request_id','ledger_id','invocation_id','intent_sha256','generation','nonce','ticket_mac'}
+        expected_fields = {'operation','request_id','ledger_id','invocation_id',
+            'intent_sha256','generation','state_key_id','nonce','ticket_mac'}
         if type(request) is not dict or set(request) != expected_fields or request.get('operation') != 'consume':
             raise WitnessDenied('witness request unavailable')
         request_id = _identity(request['request_id'], 'request identity')
@@ -245,11 +262,15 @@ class DurableLocalRecoveryWitness:
                 if row is None or state is None:
                     raise WitnessDenied('witness reservation unavailable')
                 binding = (ledger_id,invocation_id,intent_sha256)
-                valid_ticket = self._ticket_mac(row['generation'], row['ledger_id'], row['invocation_id'], row['intent_sha256'], row['nonce'])
+                if type(request['state_key_id']) is not str or not request['state_key_id']:
+                    raise WitnessDenied('witness state key unavailable')
+                valid_ticket = self._ticket_mac(row['generation'], row['ledger_id'],
+                    row['invocation_id'], row['intent_sha256'], row['nonce'],
+                    row['state_key_id'])
                 if ((row['caller_id'] != caller_id) or
                     (row['ledger_id'],row['invocation_id'],row['intent_sha256']) != binding or
                     row['generation'] != request['generation'] or row['generation'] != state['generation'] or
-                    row['nonce'] != request['nonce'] or
+                    row['state_key_id'] != request['state_key_id'] or row['nonce'] != request['nonce'] or
                     type(request['ticket_mac']) is not str or
                     not hmac.compare_digest(row['ticket_mac'], request['ticket_mac']) or
                     not hmac.compare_digest(valid_ticket, row['ticket_mac'])):

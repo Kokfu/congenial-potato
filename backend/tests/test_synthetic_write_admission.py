@@ -320,7 +320,8 @@ def test_live_witness_blocks_single_or_joint_store_rollback(authenticated, tmp_p
             'intent_sha256': intent_digest(intent)}
         permit = authenticated_call(witness.reserve, binding)
         consume = {'operation': 'consume', **{key: permit[key] for key in
-            ('request_id','ledger_id','invocation_id','intent_sha256','generation','nonce')},
+            ('request_id','ledger_id','invocation_id','intent_sha256','generation',
+             'state_key_id','nonce')},
             'ticket_mac': permit['ticket_mac']}
         authenticated_call(witness.consume, consume)
         return run(invocation_id, intent, directory)
