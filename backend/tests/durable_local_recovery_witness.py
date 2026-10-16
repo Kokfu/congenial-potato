@@ -1,0 +1,281 @@
+"""Durable local protocol prototype; never a production trust anchor.
+
+The file-backed SQLite state is deliberately separate from the application and
+fake-ledger fixtures. It models protocol ordering across process restarts only.
+"""
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import re
+import sqlite3
+from pathlib import Path
+from uuid import UUID, uuid4
+
+
+_REQUEST_DOMAIN = b'workforce.synthetic.write.witness.request.v1\0'
+_RESPONSE_DOMAIN = b'workforce.synthetic.write.witness.response.v1\0'
+_TICKET_DOMAIN = b'workforce.synthetic.write.witness.ticket.v1\0'
+_MAX_GENERATION = 2**63 - 1
+
+
+class WitnessDenied(ValueError):
+    """Fail-closed response for invalid, unavailable, or conflicting state."""
+
+
+def _canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(',', ':'),
+                      ensure_ascii=True).encode('ascii')
+
+
+def _identity(value, label):
+    try:
+        if type(value) is not str or str(UUID(value)) != value:
+            raise ValueError
+        return value
+    except (ValueError, TypeError, AttributeError):
+        raise WitnessDenied(f'witness {label} unavailable') from None
+
+
+def _digest(value):
+    if type(value) is not str or re.fullmatch(r'[0-9a-f]{64}', value) is None:
+        raise WitnessDenied('witness intent unavailable')
+    return value
+
+
+def request_mac(key: bytes, caller_id: str, request: dict) -> str:
+    """Fixture client helper. Callers must keep the key outside request data."""
+    return hmac.digest(key, _REQUEST_DOMAIN + caller_id.encode() + b'\0' +
+                       _canonical(request), 'sha256').hex()
+
+
+def verify_response(key: bytes, envelope: dict) -> dict:
+    """Verify response authenticity before interpreting the returned state."""
+    if type(envelope) is not dict or set(envelope) != {'body', 'mac'}:
+        raise WitnessDenied('witness response unavailable')
+    body, mac = envelope['body'], envelope['mac']
+    if type(body) is not dict or type(mac) is not str or re.fullmatch(r'[0-9a-f]{64}', mac) is None:
+        raise WitnessDenied('witness response unavailable')
+    expected = hmac.digest(key, _RESPONSE_DOMAIN + _canonical(body), 'sha256').hex()
+    if not hmac.compare_digest(expected, mac):
+        raise WitnessDenied('witness response authentication failed')
+    return body
+
+
+class DurableLocalRecoveryWitness:
+    """SQLite-backed protocol fixture with caller authentication and atomic state."""
+
+    def __init__(self, path, *, caller_keys: dict[str, bytes], state_key: bytes,
+                 initialize=False):
+        self.path = Path(path)
+        if (not isinstance(caller_keys, dict) or not caller_keys or
+                any(type(name) is not str or not name or type(key) is not bytes or len(key) != 32
+                    for name, key in caller_keys.items()) or
+                type(state_key) is not bytes or len(state_key) != 32):
+            raise WitnessDenied('witness key configuration unavailable')
+        self._caller_keys = dict(caller_keys)
+        self._state_key = state_key
+        self._available = True
+        if initialize:
+            self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            self.path.touch(mode=0o600, exist_ok=False)
+            with self._connect() as db:
+                db.executescript('''
+                    CREATE TABLE witness_state (
+                        singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+                        generation INTEGER NOT NULL CHECK(generation BETWEEN 1 AND 9223372036854775807)
+                    );
+                    INSERT INTO witness_state(singleton,generation) VALUES(1,1);
+                    CREATE TABLE reservations (
+                        request_id TEXT PRIMARY KEY,
+                        caller_id TEXT NOT NULL,
+                        ledger_id TEXT NOT NULL,
+                        invocation_id TEXT NOT NULL UNIQUE,
+                        intent_sha256 TEXT NOT NULL,
+                        generation INTEGER NOT NULL,
+                        nonce TEXT NOT NULL,
+                        ticket_mac TEXT NOT NULL,
+                        consumed INTEGER NOT NULL DEFAULT 0 CHECK(consumed IN (0,1))
+                    );
+                    CREATE TABLE witness_events (
+                        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                        event TEXT NOT NULL,
+                        generation INTEGER NOT NULL,
+                        request_id TEXT,
+                        invocation_id TEXT,
+                        binding_sha256 TEXT NOT NULL
+                    );
+                ''')
+        elif not self.path.is_file():
+            raise WitnessDenied('witness state unavailable')
+        else:
+            try:
+                with self._connect() as db:
+                    state = db.execute('SELECT generation FROM witness_state WHERE singleton=1').fetchone()
+                    if state is None:
+                        raise WitnessDenied('witness state unavailable')
+            except (sqlite3.Error, OSError):
+                raise WitnessDenied('witness state unavailable') from None
+
+    def set_available(self, value):
+        if type(value) is not bool:
+            raise WitnessDenied('witness availability unavailable')
+        self._available = value
+
+    def _connect(self):
+        db = sqlite3.connect(self.path, timeout=2, isolation_level=None)
+        db.row_factory = sqlite3.Row
+        db.execute('PRAGMA foreign_keys=ON')
+        return db
+
+    def _authenticate(self, caller_id, request, mac):
+        if self._available is not True:
+            raise WitnessDenied('witness unavailable')
+        key = self._caller_keys.get(caller_id) if type(caller_id) is str else None
+        expected = request_mac(key, caller_id, request) if key else ''
+        if type(mac) is not str or not hmac.compare_digest(expected, mac):
+            raise WitnessDenied('witness caller authentication failed')
+        return key
+
+    @staticmethod
+    def _envelope(key, body):
+        mac = hmac.digest(key, _RESPONSE_DOMAIN + _canonical(body), 'sha256').hex()
+        return {'body': body, 'mac': mac}
+
+    def _ticket_mac(self, generation, ledger_id, invocation_id, intent_sha256, nonce):
+        body = {'generation': generation, 'ledger_id': ledger_id,
+                'invocation_id': invocation_id, 'intent_sha256': intent_sha256,
+                'nonce': nonce}
+        return hmac.digest(self._state_key, _TICKET_DOMAIN + _canonical(body), 'sha256').hex()
+
+    def _record(self, db, event, generation, request_id, invocation_id, binding):
+        db.execute('INSERT INTO witness_events(event,generation,request_id,invocation_id,binding_sha256) '
+                   'VALUES(?,?,?,?,?)', (event, generation, request_id, invocation_id,
+                                         hashlib.sha256(_canonical(binding)).hexdigest()))
+
+    def generation(self, *, caller_id, request, mac):
+        key = self._authenticate(caller_id, request, mac)
+        if request != {'operation': 'generation'}:
+            raise WitnessDenied('witness request unavailable')
+        try:
+            with self._connect() as db:
+                row = db.execute('SELECT generation FROM witness_state WHERE singleton=1').fetchone()
+                if row is None:
+                    raise WitnessDenied('witness state unavailable')
+                return self._envelope(key, {'generation': row['generation'], 'status': 'current'})
+        except (sqlite3.Error, OSError):
+            raise WitnessDenied('witness state unavailable') from None
+
+    def reserve(self, *, caller_id, request, mac):
+        key = self._authenticate(caller_id, request, mac)
+        if type(request) is not dict or set(request) != {'operation','request_id','ledger_id','invocation_id','intent_sha256'} or request.get('operation') != 'reserve':
+            raise WitnessDenied('witness request unavailable')
+        request_id = _identity(request['request_id'], 'request identity')
+        ledger_id = _identity(request['ledger_id'], 'ledger identity')
+        invocation_id = _identity(request['invocation_id'], 'invocation identity')
+        intent_sha256 = _digest(request['intent_sha256'])
+        binding = (ledger_id, invocation_id, intent_sha256)
+        try:
+            with self._connect() as db:
+                db.execute('BEGIN IMMEDIATE')
+                state = db.execute('SELECT generation FROM witness_state WHERE singleton=1').fetchone()
+                if state is None:
+                    raise WitnessDenied('witness state unavailable')
+                generation = state['generation']
+                old = db.execute('SELECT * FROM reservations WHERE request_id=?', (request_id,)).fetchone()
+                if old:
+                    if old['caller_id'] != caller_id or (old['ledger_id'],old['invocation_id'],old['intent_sha256']) != binding or old['consumed']:
+                        raise WitnessDenied('witness reservation conflict or consumed invocation')
+                    body = self._reservation_body(old)
+                    db.commit()
+                    return self._envelope(key, body)
+                by_invocation = db.execute('SELECT * FROM reservations WHERE invocation_id=?', (invocation_id,)).fetchone()
+                if by_invocation:
+                    if by_invocation['consumed']:
+                        raise WitnessDenied('witness invocation already consumed or unknown')
+                    raise WitnessDenied('witness invocation already reserved')
+                nonce = str(uuid4())
+                ticket_mac = self._ticket_mac(generation, ledger_id, invocation_id, intent_sha256, nonce)
+                db.execute('INSERT INTO reservations(request_id,caller_id,ledger_id,invocation_id,intent_sha256,generation,nonce,ticket_mac) VALUES(?,?,?,?,?,?,?,?)',
+                           (request_id,caller_id,ledger_id,invocation_id,intent_sha256,generation,nonce,ticket_mac))
+                self._record(db, 'reserved', generation, request_id, invocation_id, binding)
+                row = db.execute('SELECT * FROM reservations WHERE request_id=?', (request_id,)).fetchone()
+                body = self._reservation_body(row)
+                db.commit()
+                return self._envelope(key, body)
+        except WitnessDenied:
+            raise
+        except (sqlite3.Error, OSError):
+            raise WitnessDenied('witness state unavailable') from None
+
+    @staticmethod
+    def _reservation_body(row):
+        return {'status': 'spent' if row['consumed'] else 'reserved',
+                'generation': row['generation'], 'request_id': row['request_id'],
+                'ledger_id': row['ledger_id'], 'invocation_id': row['invocation_id'],
+                'intent_sha256': row['intent_sha256'], 'nonce': row['nonce'],
+                'ticket_mac': row['ticket_mac']}
+
+    def consume(self, *, caller_id, request, mac):
+        key = self._authenticate(caller_id, request, mac)
+        expected_fields = {'operation','request_id','ledger_id','invocation_id','intent_sha256','generation','nonce','ticket_mac'}
+        if type(request) is not dict or set(request) != expected_fields or request.get('operation') != 'consume':
+            raise WitnessDenied('witness request unavailable')
+        request_id = _identity(request['request_id'], 'request identity')
+        ledger_id = _identity(request['ledger_id'], 'ledger identity')
+        invocation_id = _identity(request['invocation_id'], 'invocation identity')
+        intent_sha256 = _digest(request['intent_sha256'])
+        if type(request['generation']) is not int or not 1 <= request['generation'] <= _MAX_GENERATION:
+            raise WitnessDenied('witness generation unavailable')
+        _identity(request['nonce'], 'nonce')
+        try:
+            with self._connect() as db:
+                db.execute('BEGIN IMMEDIATE')
+                row = db.execute('SELECT * FROM reservations WHERE request_id=?', (request_id,)).fetchone()
+                state = db.execute('SELECT generation FROM witness_state WHERE singleton=1').fetchone()
+                if row is None or state is None:
+                    raise WitnessDenied('witness reservation unavailable')
+                binding = (ledger_id,invocation_id,intent_sha256)
+                valid_ticket = self._ticket_mac(row['generation'], row['ledger_id'], row['invocation_id'], row['intent_sha256'], row['nonce'])
+                if ((row['caller_id'] != caller_id) or
+                    (row['ledger_id'],row['invocation_id'],row['intent_sha256']) != binding or
+                    row['generation'] != request['generation'] or row['generation'] != state['generation'] or
+                    row['nonce'] != request['nonce'] or
+                    type(request['ticket_mac']) is not str or
+                    not hmac.compare_digest(row['ticket_mac'], request['ticket_mac']) or
+                    not hmac.compare_digest(valid_ticket, row['ticket_mac'])):
+                    raise WitnessDenied('witness ticket binding unavailable')
+                if row['consumed']:
+                    raise WitnessDenied('witness invocation already consumed or unknown')
+                db.execute('UPDATE reservations SET consumed=1 WHERE request_id=? AND consumed=0', (request_id,))
+                self._record(db, 'consumed', row['generation'], request_id, invocation_id, binding)
+                db.commit()
+                body = {'status': 'spent', 'generation': row['generation'],
+                        'request_id': request_id, 'invocation_id': invocation_id}
+                return self._envelope(key, body)
+        except WitnessDenied:
+            raise
+        except (sqlite3.Error, OSError):
+            raise WitnessDenied('witness state unavailable') from None
+
+    def advance_generation(self, *, caller_id, request, mac):
+        key = self._authenticate(caller_id, request, mac)
+        if type(request) is not dict or set(request) != {'operation'} or request.get('operation') != 'advance':
+            raise WitnessDenied('witness request unavailable')
+        try:
+            with self._connect() as db:
+                db.execute('BEGIN IMMEDIATE')
+                row = db.execute('SELECT generation FROM witness_state WHERE singleton=1').fetchone()
+                if row is None or row['generation'] >= _MAX_GENERATION:
+                    raise WitnessDenied('witness generation unavailable')
+                generation = row['generation'] + 1
+                db.execute('UPDATE witness_state SET generation=? WHERE singleton=1', (generation,))
+                self._record(db, 'generation_advanced', generation, None, None, {'generation': generation})
+                db.commit()
+                return self._envelope(key, {'generation': generation, 'status': 'current'})
+        except WitnessDenied:
+            raise
+        except (sqlite3.Error, OSError):
+            raise WitnessDenied('witness state unavailable') from None
+
