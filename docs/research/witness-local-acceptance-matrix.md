@@ -1,6 +1,6 @@
-# Local witness acceptance matrix: Phase 8.4bc
+# Local witness acceptance matrix: Phase 8.4bd
 
-Date: 2026-10-16. Branch: `phase-8-witness-postgres-restore-validation`. Parent: draft PR [#126](https://github.com/Kokfu/congenial-potato/pull/126), commit `94620757e4c928df99e7bcc16614084f2b1ab5e6`.
+Date: 2026-10-16. Branch: `phase-8-witness-postgres-rpc-restore`. Parent: draft PR [#127](https://github.com/Kokfu/congenial-potato/pull/127), commit `81f980d9dae1522b7c1715107aa7bd79a2cfd7ad`.
 
 This is the current local synthetic checkpoint. The fixture protocol, same-host transport and fake-ledger drills do not constitute an independent recovery service or product activation. Expected rollback and caller-effect limitations are recorded separately below.
 
@@ -12,7 +12,7 @@ This is the current local synthetic checkpoint. The fixture protocol, same-host 
 
 The [fixed local checker](witness-local-check-command.md) tests the checkout directly, isolates pytest options/plugins/configuration, excludes PostgreSQL conftest loading and compiles selected files to a temporary directory. Dependency setup is documented with that command.
 
-The latest six-module local runtime check is Phase 8.4bb: **120 local cases passed in 4.93s**, **65 product Python files passed the static fixture-import guard**, and **15 files compiled**. Separately, Phase 8.4bc passed **3 PostgreSQL-backed witness restore-wrapper cases in 4.66s**, after fresh application/workflow migrations; see [setup, cleanup and limits](witness-postgres-restore-wrapper-validation.md). The 120-case command was not rerun for this documentation increment. Collection-only inspection verified the exact six-module, 120-case inventory; changed-document links plus `git diff --check` passed.
+The latest six-module local runtime check is Phase 8.4bb: **120 local cases passed in 4.93s**, **65 product Python files passed the static fixture-import guard**, and **15 files compiled**. Separately, Phase 8.4bd passed **6 PostgreSQL-backed witness restore-wrapper cases in 9.76s** (three direct and three Unix-RPC), after fresh application/workflow migrations; see [RPC cases and limits](witness-postgres-rpc-restore-validation.md) and [database setup](witness-postgres-restore-wrapper-validation.md). The 120-case command was not rerun for this documentation increment. Collection-only inspection verified the exact six-module, 120-case inventory; changed-document links plus `git diff --check` passed.
 
 | Collected module | Cases |
 | --- | ---: |
@@ -59,7 +59,7 @@ The last row is one post-drain effect, not replay. Successful drain concerns onl
 
 The [lifecycle checklist](witness-trust-boundary-lifecycle.md) still requires a separately administered service, reviewed remote authenticated transport, independently protected anti-rollback generation/consumed state, separate restore authority, protected key lifecycle and independently retained tamper-evident audit evidence. Coordinated restore also needs independent admission/caller/effect fencing or quiescence, reconciliation of consumed-but-unapplied and unknown outcomes, and divergent-snapshot resolution before admission reopens.
 
-Those controls require separately authorized infrastructure and operational/integration evidence. The three PostgreSQL-backed wrapper cases are local fixture evidence only. Actual effect adapters, protected storage/backups and production recovery remain unrun. No protected-infrastructure, physical power-loss or production-safety claim follows. Product dispatch, real external writes, paid models, deployment and production integration remain disabled.
+Those controls require separately authorized infrastructure and operational/integration evidence. The six PostgreSQL-backed direct/RPC wrapper cases are local fixture evidence only. Actual effect adapters, protected storage/backups and production recovery remain unrun. No protected-infrastructure, physical power-loss or production-safety claim follows. Product dispatch, real external writes, paid models, deployment and production integration remain disabled.
 
 ## Historical checkpoints
 
