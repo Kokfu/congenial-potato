@@ -537,6 +537,31 @@ def test_server_config_rejects_duplicate_and_unexpected_fields(tmp_path):
 
 @pytest.mark.skipif(not hasattr(socket, 'SO_PEERCRED'),
     reason='local peer credential transport requires Linux SO_PEERCRED')
+def test_server_rejects_duplicate_rpc_fields_before_reservation(tmp_path):
+    socket_dir = tmp_path/'private-socket'
+    socket_dir.mkdir(mode=0o700)
+    path = tmp_path/'state.sqlite3'
+    witness = DurableLocalRecoveryWitness(path,
+        caller_keys={CALLER:CALLER_KEY}, state_key=STATE_KEY, initialize=True)
+    request = {'operation':'reserve','request_id':str(uuid4()),
+        'ledger_id':str(uuid4()),'invocation_id':str(uuid4()),
+        'intent_sha256':'c'*64}
+    mac = request_mac(CALLER_KEY, CALLER, request)
+    frame = ('{"caller_id":'+json.dumps(CALLER)+',"request":'+json.dumps(request)+
+        ',"caller_id":'+json.dumps(CALLER)+',"mac":'+json.dumps(mac)+'}\n').encode()
+    with LocalWitnessUnixServer(witness, socket_dir/'witness.sock'):
+        with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as connection:
+            connection.settimeout(2)
+            connection.connect(str(socket_dir/'witness.sock'))
+            connection.sendall(frame)
+            response = json.loads(transport_module._read_frame(connection).decode())
+    assert response == {'error':'denied'}
+    with sqlite3.connect(path) as db:
+        assert db.execute('SELECT count(*) FROM reservations').fetchone()[0] == 0
+
+
+@pytest.mark.skipif(not hasattr(socket, 'SO_PEERCRED'),
+    reason='local peer credential transport requires Linux SO_PEERCRED')
 def test_server_replaces_owned_stale_socket_path_only(tmp_path):
     directory = tmp_path/'private'
     directory.mkdir(mode=0o700)
