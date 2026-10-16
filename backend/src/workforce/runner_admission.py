@@ -164,28 +164,36 @@ def check_runner_authority(admission: RunnerAdmission, *, experiment_enabled=Fal
         if (attempt is None or not hmac.compare_digest(attempt.capability_hash,
                 hashlib.sha256(admission.capability).hexdigest())):
             raise RunnerAdmissionDenied('Runner capability unavailable')
-        reason = _reason(db, invocation, source, root, approval)
-        if reason is None and (attempt.status != 'unknown' or attempt.reason is not None or
-                attempt.approval_id != approval.id or attempt.agent_id != source.agent_id or
-                attempt.root_id != source.root_id or attempt.binding_hash != _binding(invocation) or
-                attempt.image_id != admission.image_id or attempt.job_sha256 != admission.job_sha256 or
-                attempt.manifest_sha256 != admission.manifest_sha256 or
-                attempt.image_id != invocation.policy_snapshot['runner_grant']['image_id'] or
-                attempt.job_sha256 != invocation.policy_snapshot['runner_grant']['job_sha256']):
-            reason = 'attempt_changed'
-        try:
-            manifest = verify_runner_manifest(admission.manifest_raw,
-                                              expected_sha256=attempt.manifest_sha256)
-            if (str(manifest.scope.attempt_id) != invocation.id or
-                    str(manifest.scope.project_id) != invocation.project_id or
-                    str(manifest.scope.agent_id) != source.agent_id or
-                    str(manifest.scope.root_id) != source.root_id or
-                    manifest.input.model_dump(mode='json') != invocation.arguments['input'] or
-                    manifest.issued_at != attempt.issued_at or manifest.expires_at != attempt.expires_at):
-                reason = 'manifest_changed'
-        except RunnerContractError:
-            reason = 'manifest_unavailable'
+        if attempt.status == 'accepted':
+            raise RunnerAdmissionUnknown('Runner result already accepted; no execution')
+        reason, manifest = _ongoing_reason(db, invocation, source, root, approval, attempt, admission)
         if reason:
             _deny(db, invocation, approval, reason, attempt)
         manifest.current()
     return True
+
+
+def _ongoing_reason(db, invocation, source, root, approval, attempt, admission):
+    manifest = None
+    reason = _reason(db, invocation, source, root, approval)
+    if reason is None and (attempt.status != 'unknown' or attempt.reason is not None or
+            attempt.approval_id != approval.id or attempt.agent_id != source.agent_id or
+            attempt.root_id != source.root_id or attempt.binding_hash != _binding(invocation) or
+            attempt.image_id != admission.image_id or attempt.job_sha256 != admission.job_sha256 or
+            attempt.manifest_sha256 != admission.manifest_sha256 or
+            attempt.image_id != invocation.policy_snapshot['runner_grant']['image_id'] or
+            attempt.job_sha256 != invocation.policy_snapshot['runner_grant']['job_sha256']):
+        reason = 'attempt_changed'
+    try:
+        manifest = verify_runner_manifest(admission.manifest_raw,
+                                          expected_sha256=attempt.manifest_sha256)
+        if (str(manifest.scope.attempt_id) != invocation.id or
+                str(manifest.scope.project_id) != invocation.project_id or
+                str(manifest.scope.agent_id) != source.agent_id or
+                str(manifest.scope.root_id) != source.root_id or
+                manifest.input.model_dump(mode='json') != invocation.arguments['input'] or
+                manifest.issued_at != attempt.issued_at or manifest.expires_at != attempt.expires_at):
+            reason = 'manifest_changed'
+    except RunnerContractError:
+        reason = 'manifest_unavailable'
+    return reason, manifest

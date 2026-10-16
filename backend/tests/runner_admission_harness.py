@@ -1,4 +1,4 @@
-"""Trusted test-only bridge. No product import, RPC or receipt acceptance.
+"""Trusted test-only bridge. No product import or RPC.
 
 Every launch starts with independent DB admission. Ongoing private-capability
 checks cannot be used as the public entry point for a second launch.
@@ -11,7 +11,10 @@ from runner_isolation_harness import run_job
 
 
 def run_admitted_job(invocation_id, *, journal, experiment_enabled=False,
-                     after_commit=None, after_create=None, after_job=None, result_key=None):
+                     after_commit=None, after_create=None, after_job=None, result_key=None,
+                     accept_result=False, after_receipt=None, after_result_commit=None):
+    if accept_result and result_key is None:
+        raise RunnerAdmissionDenied('Result acceptance requires a private host key')
     admission = admit_runner_attempt(invocation_id, experiment_enabled=experiment_enabled,
                                      after_commit=after_commit)
     if admission.job_sha256 != job_code_digest():
@@ -34,4 +37,10 @@ def run_admitted_job(invocation_id, *, journal, experiment_enabled=False,
     envelope = sign_runner_result(canonical_receipt(receipt), admission,
         key=result_key, experiment_enabled=experiment_enabled)
     check_runner_authority(admission, experiment_enabled=experiment_enabled)
+    if after_receipt:
+        after_receipt()
+    if accept_result:
+        from workforce.runner_result_acceptance import accept_runner_result
+        return accept_runner_result(admission, envelope, key=result_key,
+            experiment_enabled=experiment_enabled, after_commit=after_result_commit)
     return admission, envelope
