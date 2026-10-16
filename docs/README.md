@@ -101,6 +101,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 93. [Witness outage effect-boundary drill](research/witness-outage-effect-boundary-validation.md)
 94. [Witness authentication effect-boundary drill](research/witness-auth-effect-boundary-validation.md)
 95. [Witness trust-boundary lifecycle and prerequisites](research/witness-trust-boundary-lifecycle.md)
+96. [Caller-key rotation at fake effect boundary](research/witness-rotation-effect-boundary-validation.md)
 
 ## Architecture
 
