@@ -76,7 +76,8 @@ class UnixWitnessClient:
                 connection.settimeout(self.timeout)
                 connection.connect(self.socket_path)
                 connection.sendall(payload)
-                response = json.loads(_read_frame(connection).decode('ascii'))
+                response = json.loads(_read_frame(connection).decode('ascii'),
+                    object_pairs_hook=_unique_json_object)
         except WitnessTransportDenied:
             raise
         except (OSError, UnicodeError, json.JSONDecodeError, TimeoutError):
