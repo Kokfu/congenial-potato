@@ -7,6 +7,7 @@ import socketserver
 import stat
 import struct
 import threading
+import time
 from pathlib import Path
 from uuid import uuid4
 
@@ -14,6 +15,7 @@ from durable_local_recovery_witness import (DurableLocalRecoveryWitness,
     WitnessDenied, request_mac, verify_response)
 
 _MAX_FRAME = 16 * 1024
+_FRAME_TIMEOUT = 2.0
 
 
 class WitnessTransportDenied(ConnectionError):
@@ -35,7 +37,13 @@ def _unique_json_object(pairs):
 
 def _read_frame(connection):
     data = bytearray()
+    timeout = connection.gettimeout()
+    deadline = time.monotonic() + (_FRAME_TIMEOUT if timeout is None else timeout)
     while len(data) <= _MAX_FRAME:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise WitnessTransportDenied('witness transport frame deadline expired')
+        connection.settimeout(remaining)
         chunk = connection.recv(min(4096, _MAX_FRAME + 1 - len(data)))
         if not chunk:
             break
@@ -202,6 +210,7 @@ class LocalWitnessUnixServer:
 
     def _handle(self, connection):
         with connection:
+            connection.settimeout(_FRAME_TIMEOUT)
             _UnixHandler(connection, ('local', 0), self)
 
     def close(self):
