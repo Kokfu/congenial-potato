@@ -1,6 +1,6 @@
-# Local witness acceptance matrix: Phase 8.4ba
+# Local witness acceptance matrix: Phase 8.4bb
 
-Date: 2026-10-16. Branch: `phase-8-witness-acceptance-checkpoint-106`. Parent: response-body contract draft PR [#124](https://github.com/Kokfu/congenial-potato/pull/124), commit `214ac9bb252702561bade7850120ea65ba14a02a`.
+Date: 2026-10-16. Branch: `phase-8-witness-unicode-identities`. Parent: consolidated acceptance checkpoint draft PR [#125](https://github.com/Kokfu/congenial-potato/pull/125), commit `016595c70fe016ac6abef4a3557ccecf2de6089e`.
 
 This is the current local synthetic checkpoint. The fixture protocol, same-host transport and fake-ledger drills do not constitute an independent recovery service or product activation. Expected rollback and caller-effect limitations are recorded separately below.
 
@@ -12,17 +12,17 @@ This is the current local synthetic checkpoint. The fixture protocol, same-host 
 
 The [fixed local checker](witness-local-check-command.md) tests the checkout directly, isolates pytest options/plugins/configuration, excludes PostgreSQL conftest loading and compiles selected files to a temporary directory. Dependency setup is documented with that command.
 
-The latest executed runtime check is the Phase 8.4az parent: **106 local cases passed in 4.53s**, **65 product Python files passed the static fixture-import guard**, and **15 files compiled**. The PostgreSQL wrapper is compiled only. This documentation-only refresh did not rerun those test bodies; collection-only inspection verified the exact six-module, 106-case inventory, and changed-document links plus `git diff --check` passed.
+The latest executed runtime check is Phase 8.4bb: **120 local cases passed in 4.93s**, **65 product Python files passed the static fixture-import guard**, and **15 files compiled**. The PostgreSQL wrapper is compiled only. Collection-only inspection verified the exact six-module, 120-case inventory; changed-document links plus `git diff --check` passed.
 
 | Collected module | Cases |
 | --- | ---: |
-| [Durable protocol](../../backend/tests/test_durable_local_recovery_witness.py) | 25 |
+| [Durable protocol](../../backend/tests/test_durable_local_recovery_witness.py) | 33 |
 | [Fake-ledger recovery](../../backend/tests/test_durable_witness_fake_ledger_recovery.py) | 13 |
-| [Local transport/process lifecycle](../../backend/tests/test_durable_local_witness_transport.py) | 37 |
+| [Local transport/process lifecycle](../../backend/tests/test_durable_local_witness_transport.py) | 40 |
 | [Pending-snapshot audit rollback](../../backend/tests/test_witness_pending_snapshot_audit_rollback.py) | 1 |
-| [Response parsing/binding/contracts](../../backend/tests/test_witness_rpc_response_validation.py) | 21 |
+| [Response parsing/binding/contracts](../../backend/tests/test_witness_rpc_response_validation.py) | 24 |
 | [In-memory protocol regressions](../../backend/tests/test_synthetic_write_recovery_witness.py) | 9 |
-| **Total** | **106** |
+| **Total** | **120** |
 
 ## Current fixture behavior and evidence
 
@@ -30,7 +30,7 @@ The latest executed runtime check is the Phase 8.4az parent: **106 local cases p
 | --- | --- | --- |
 | Reservation/consumption | Exact binding, idempotent reserve retry, one-way consume, retained-state restart and concurrent winner | [Durable protocol](durable-local-recovery-witness-validation.md) |
 | Generation/admin | Idempotent advance identity, stale-ticket denial, stable caller allowlist, typed unique admin configuration | [Advance retry](idempotent-witness-generation-advance-validation.md), [configuration](witness-server-config-validation.md) |
-| Identity/key encoding | Canonical named caller/key/request fields under v2 request MAC domains; old delimiter format rejected | [Canonical identities](witness-canonical-auth-identities-validation.md) |
+| Identity/key encoding | Canonical named caller/key/request fields under v2 request MAC domains; old delimiter format rejected; invalid UTF-8 names denied before setup while valid Unicode/audit identities are retained | [Canonical identities](witness-canonical-auth-identities-validation.md), [Unicode names](witness-unicode-identities-validation.md) |
 | Key lifecycle | Caller/state-key overlap, retirement, missing pending-ticket key denial and retained consumed identity | [Lifecycle](witness-trust-boundary-lifecycle.md), [process state-key rotation](witness-state-process-key-rotation-validation.md) |
 | Framing/decoding | Byte cap, duplicate fields, non-finite numeric rejection and decode-error normalization | [RPC JSON](witness-rpc-json-validation.md), [frame size](witness-oversize-frame-validation.md) |
 | Response correlation | v2 signed request binding plus fresh authenticated exchange nonce; stale/mismatched replies reject | [Request binding](witness-rpc-response-binding-validation.md), [exchange freshness](witness-rpc-exchange-freshness-validation.md) |

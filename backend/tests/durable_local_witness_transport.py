@@ -13,7 +13,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from durable_local_recovery_witness import (DurableLocalRecoveryWitness,
-    WitnessDenied, request_mac, verify_response)
+    WitnessDenied, request_mac, verify_response, _valid_name)
 
 _MAX_FRAME = 16 * 1024
 _FRAME_TIMEOUT = 2.0
@@ -85,10 +85,10 @@ class UnixWitnessClient:
                  current_key_id='caller-v1', timeout=2):
         if type(key) is bytes and keys is None:
             keys = {'caller-v1': key}
-        if (type(caller_id) is not str or not caller_id or not isinstance(keys, dict) or
-                not keys or any(type(key_id) is not str or not key_id or
+        if (not _valid_name(caller_id) or not isinstance(keys, dict) or
+                not keys or any(not _valid_name(key_id) or
                 type(value) is not bytes or len(value) != 32 for key_id, value in keys.items()) or
-                current_key_id not in keys):
+                not _valid_name(current_key_id) or current_key_id not in keys):
             raise WitnessTransportDenied('witness client identity unavailable')
         self.socket_path = str(socket_path)
         self.caller_id, self.keys, self.current_key_id, self.timeout = caller_id, dict(keys), current_key_id, timeout

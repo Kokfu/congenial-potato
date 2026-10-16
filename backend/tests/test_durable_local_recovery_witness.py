@@ -74,6 +74,45 @@ def call(witness, request, *, key=CALLER_KEY, caller=CALLER, key_id='caller-v1')
         expected_request_mac=request_mac(key, caller, request, key_id), expected_request=request)
 
 
+@pytest.mark.parametrize('bad', ['\ud800', '\udfff'], ids=['high-surrogate', 'low-surrogate'])
+@pytest.mark.parametrize('field', ['caller', 'caller_key', 'state_key'])
+def test_invalid_unicode_identity_config_denies_before_creating_state(tmp_path, bad, field):
+    config = {'caller_keys': {CALLER: {'caller-v1': CALLER_KEY}},
+        'current_caller_key_ids': {CALLER: 'caller-v1'},
+        'state_keys': {'state-v1': STATE_KEY}, 'current_state_key_id': 'state-v1'}
+    if field == 'caller':
+        config['caller_keys'] = {bad: {'caller-v1': CALLER_KEY}}
+        config['current_caller_key_ids'] = {bad: 'caller-v1'}
+    elif field == 'caller_key':
+        config['caller_keys'] = {CALLER: {bad: CALLER_KEY}}
+        config['current_caller_key_ids'] = {CALLER: bad}
+    else:
+        config['state_keys'] = {bad: STATE_KEY}
+        config['current_state_key_id'] = bad
+    path = tmp_path/'new-state'/'witness.sqlite3'
+    with pytest.raises(WitnessDenied, match='key configuration'):
+        DurableLocalRecoveryWitness(path, **config, initialize=True)
+    assert not path.parent.exists()
+
+
+@pytest.mark.parametrize('caller,key_id,state_id', [
+    ('管理者', '呼出鍵', '状態鍵'), ('caller-😀', 'caller-key-🚀', 'state-key-🔐'),
+])
+def test_valid_unicode_identities_preserve_protocol_and_audit(tmp_path, caller, key_id, state_id):
+    path = tmp_path/'state.sqlite3'
+    witness = DurableLocalRecoveryWitness(path, caller_keys={caller: {key_id: CALLER_KEY}},
+        current_caller_key_ids={caller: key_id}, state_keys={state_id: STATE_KEY},
+        current_state_key_id=state_id, advance_callers={caller}, initialize=True)
+    ticket = call(witness, reserve_request(), caller=caller, key_id=key_id)
+    assert ticket['state_key_id'] == state_id
+    assert call(witness, consume_request(ticket), caller=caller, key_id=key_id)['status'] == 'spent'
+    assert call(witness, {'operation': 'advance', 'request_id': str(uuid4())},
+        caller=caller, key_id=key_id)['generation'] == 2
+    with sqlite3.connect(path) as db:
+        assert db.execute('SELECT caller_id, caller_key_id, state_key_id FROM witness_events ORDER BY sequence').fetchall() == [
+            (caller, key_id, state_id), (caller, key_id, state_id), (caller, key_id, None)]
+
+
 def dispatch(witness, request, *, caller=CALLER, key=CALLER_KEY, key_id='caller-v1'):
     mac = request_mac(key, caller, request, key_id)
     if request['operation'] == 'reserve':
