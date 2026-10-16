@@ -60,9 +60,10 @@ def stop_server(process):
 def client_program():
     return '''
 import json, os, sys, time
+import socket
 from pathlib import Path
 from durable_local_witness_transport import UnixWitnessClient
-from durable_local_recovery_witness import WitnessDenied
+from durable_local_recovery_witness import WitnessDenied, request_mac
 from durable_local_witness_transport import WitnessTransportDenied
 config=json.load(open(sys.argv[1]))
 if 'client_keyrings' in config:
@@ -101,6 +102,20 @@ elif mode in ('consume-ticket','consume-race'):
         print(client.request(consume)['status'])
     except WitnessTransportDenied:
         print('denied')
+elif mode == 'drop-consume-reply':
+    ticket=json.load(open(config['ticket_path']))
+    consume={'operation':'consume',**{key:ticket[key] for key in
+        ('request_id','ledger_id','invocation_id','intent_sha256','generation','state_key_id','nonce')},
+        'ticket_mac':ticket['ticket_mac']}
+    frame={'caller_id':'socket-fixture-caller','caller_key_id':'caller-v1',
+        'request':consume,'mac':request_mac(b'u'*32,'socket-fixture-caller',consume,'caller-v1')}
+    payload=json.dumps(frame,sort_keys=True,separators=(',',':')).encode('ascii')+b'\\n'
+    connection=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+    connection.connect(config['socket_path'])
+    connection.sendall(payload)
+    connection.shutdown(socket.SHUT_RD)
+    connection.close()
+    print('reply intentionally abandoned')
 elif mode == 'retry-consumed':
     request={'operation':'reserve','request_id':invocation,'ledger_id':ledger,
         'invocation_id':invocation,'intent_sha256':digest}
@@ -420,6 +435,70 @@ def test_separate_admin_processes_retry_generation_advance_once(tmp_path):
                 client.terminate()
                 client.wait(timeout=2)
         stop_server(server)
+
+
+@pytest.mark.skipif(not hasattr(__import__('socket'), 'SO_PEERCRED'),
+    reason='local peer credential transport requires Linux SO_PEERCRED')
+def test_lost_consume_reply_remains_spent_after_server_restart(tmp_path):
+    socket_dir = tmp_path/'private-socket'
+    socket_dir.mkdir(mode=0o700)
+    state_dir = tmp_path/'witness-state'
+    state_dir.mkdir(mode=0o700)
+    state_path = state_dir/'witness.sqlite3'
+    DurableLocalRecoveryWitness(state_path,
+        caller_keys={CALLER:CALLER_KEY}, state_key=STATE_KEY, initialize=True)
+    config = {'socket_path':str(socket_dir/'witness.sock'),
+        'state_path':str(state_path), 'caller_keys':{CALLER:CALLER_KEY.hex()},
+        'state_key':STATE_KEY.hex()}
+    config_path = tmp_path/'server-config.json'
+    config_path.write_text(json.dumps(config))
+    config_path.chmod(0o600)
+    ticket_path = tmp_path/'pending-ticket.json'
+    client_config_path = tmp_path/'client-config.json'
+    client_config_path.write_text(json.dumps({'socket_path':config['socket_path'],
+        'ticket_path':str(ticket_path)}))
+    client_config_path.chmod(0o600)
+    args = [sys.executable,'-c',client_program(),str(client_config_path)]
+    client_env = dict(os.environ)
+    client_env['PYTHONPATH'] = str(Path(transport_module.__file__).parent) + os.pathsep + client_env.get('PYTHONPATH','')
+    invocation, ledger, digest = str(uuid4()), str(uuid4()), 'b'*64
+    server = start_server(config_path)
+    try:
+        reserve = subprocess.run(args+[invocation,ledger,digest,'reserve-only'],
+            capture_output=True,text=True,env=client_env,timeout=10)
+        assert reserve.returncode == 0, reserve.stderr
+        ticket_path.write_text(reserve.stdout)
+        ticket_path.chmod(0o600)
+        dropped = subprocess.run(args+[invocation,ledger,digest,'drop-consume-reply'],
+            capture_output=True,text=True,env=client_env,timeout=10)
+        assert dropped.returncode == 0, dropped.stderr
+        assert dropped.stdout.strip() == 'reply intentionally abandoned'
+        deadline = time.monotonic() + 5
+        consumed = 0
+        while time.monotonic() < deadline:
+            with sqlite3.connect(state_path) as db:
+                consumed = db.execute("SELECT count(*) FROM witness_events "
+                    "WHERE event='consumed'").fetchone()[0]
+            if consumed:
+                break
+            time.sleep(0.01)
+        assert consumed == 1, 'server did not durably consume before the client abandoned the reply'
+    finally:
+        stop_server(server)
+
+    restarted = start_server(config_path)
+    try:
+        retry = subprocess.run(args+[invocation,ledger,digest,'retry-consumed'],
+            capture_output=True,text=True,env=client_env,timeout=10)
+        assert retry.returncode == 0, retry.stderr
+        assert retry.stdout.strip() == 'denied'
+        with sqlite3.connect(state_path) as db:
+            assert db.execute('SELECT consumed FROM reservations WHERE invocation_id=?',
+                (invocation,)).fetchone()[0] == 1
+            assert db.execute("SELECT count(*) FROM witness_events "
+                "WHERE event='consumed'").fetchone()[0] == 1
+    finally:
+        stop_server(restarted)
 
 
 def test_server_rejects_non_private_socket_directory(tmp_path):

@@ -94,6 +94,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 86. [Recovery-admin key rotation concurrency](research/witness-admin-key-race-validation.md)
 87. [Separate-process witness consume race](research/witness-process-consume-race-validation.md)
 88. [Separate-process recovery-admin race](research/witness-process-admin-race-validation.md)
+89. [Lost consume reply across witness restart](research/witness-process-lost-consume-reply-validation.md)
 
 ## Architecture
 
