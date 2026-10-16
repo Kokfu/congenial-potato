@@ -104,6 +104,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 96. [Caller-key rotation at fake effect boundary](research/witness-rotation-effect-boundary-validation.md)
 97. [State-key rotation at fake effect boundary](research/witness-state-rotation-effect-boundary-validation.md)
 98. [Pending state-key restore at fake effect boundary](research/witness-pending-state-key-restore-validation.md)
+99. [Phase 8.4 local witness acceptance matrix](research/witness-local-acceptance-matrix.md)
 
 ## Architecture
 
