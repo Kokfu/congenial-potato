@@ -138,6 +138,8 @@ class DurableLocalRecoveryWitness:
                  state_key: bytes | None = None,
                  state_keys: dict[str, bytes] | None = None,
                  current_state_key_id='state-v1', advance_callers=frozenset(), initialize=False):
+        if type(initialize) is not bool:
+            raise WitnessDenied('witness initialization mode unavailable')
         self.path = Path(path)
         if state_keys is None and type(state_key) is bytes:
             state_keys = {'state-v1': state_key}

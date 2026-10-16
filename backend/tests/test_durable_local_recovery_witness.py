@@ -592,3 +592,37 @@ def test_malformed_mac_denies_with_protocol_error_before_mutation(tmp_path, oper
             method(caller_id=CALLER, request=requests[operation], mac=bad)
         assert path.read_bytes() == before
     assert call(witness, consume_request(permit))['status'] == 'spent'
+
+
+@pytest.mark.parametrize('mode', ['false', 'true', 0, 1, None, [], {}, b'false'],
+    ids=['text-false', 'text-true', 'zero', 'one', 'none', 'list', 'dict', 'bytes'])
+def test_initialization_requires_explicit_boolean_without_filesystem_changes(tmp_path, mode):
+    missing = tmp_path/'missing-state'/'witness.sqlite3'
+    with pytest.raises(WitnessDenied, match='initialization mode'):
+        DurableLocalRecoveryWitness(missing, caller_keys={CALLER: CALLER_KEY},
+            state_key=STATE_KEY, initialize=mode)
+    assert not missing.parent.exists()
+
+    path = tmp_path/'existing-state'/'witness.sqlite3'
+    witness = create(path)
+    permit = call(witness, reserve_request())
+    before = path.read_bytes()
+    with pytest.raises(WitnessDenied, match='initialization mode'):
+        DurableLocalRecoveryWitness(path, caller_keys={CALLER: CALLER_KEY},
+            state_key=STATE_KEY, initialize=mode)
+    assert path.read_bytes() == before
+    assert call(reopen(path), consume_request(permit))['status'] == 'spent'
+
+
+def test_explicit_initialization_boolean_creates_or_opens_only_as_requested(tmp_path):
+    path = tmp_path/'private'/'witness.sqlite3'
+    with pytest.raises(WitnessDenied, match='unavailable'):
+        DurableLocalRecoveryWitness(path, caller_keys={CALLER: CALLER_KEY},
+            state_key=STATE_KEY, initialize=False)
+    assert not path.parent.exists()
+    witness = DurableLocalRecoveryWitness(path, caller_keys={CALLER: CALLER_KEY},
+        state_key=STATE_KEY, initialize=True)
+    permit = call(witness, reserve_request())
+    reopened = DurableLocalRecoveryWitness(path, caller_keys={CALLER: CALLER_KEY},
+        state_key=STATE_KEY, initialize=False)
+    assert call(reopened, consume_request(permit))['status'] == 'spent'
