@@ -661,6 +661,40 @@ def test_server_config_maps_excessive_json_nesting_to_denial(tmp_path, monkeypat
         transport_module.serve_config(path)
 
 
+@pytest.mark.parametrize('field', ['caller', 'caller_key', 'state_key'])
+def test_server_config_rejects_invalid_unicode_identity_before_start(tmp_path, monkeypatch, field):
+    state = tmp_path/'state.sqlite3'
+    DurableLocalRecoveryWitness(state, caller_keys={CALLER: CALLER_KEY},
+        state_key=STATE_KEY, initialize=True)
+    config = {'socket_path': str(tmp_path/'witness.sock'), 'state_path': str(state),
+        'caller_keyrings': {CALLER: {'caller-v1': CALLER_KEY.hex()}},
+        'current_caller_key_ids': {CALLER: 'caller-v1'},
+        'state_keys': {'state-v1': STATE_KEY.hex()}, 'current_state_key_id': 'state-v1'}
+    bad = '\ud800'
+    if field == 'caller':
+        config['caller_keyrings'] = {bad: {'caller-v1': CALLER_KEY.hex()}}
+        config['current_caller_key_ids'] = {bad: 'caller-v1'}
+    elif field == 'caller_key':
+        config['caller_keyrings'] = {CALLER: {bad: CALLER_KEY.hex()}}
+        config['current_caller_key_ids'] = {CALLER: bad}
+    else:
+        config['state_keys'] = {bad: STATE_KEY.hex()}
+        config['current_state_key_id'] = bad
+    path = tmp_path/'config.json'
+    path.write_text(json.dumps(config))
+    path.chmod(0o600)
+    before = state.read_bytes()
+
+    def unexpected_server(*args, **kwargs):
+        pytest.fail('invalid Unicode identity reached server construction')
+
+    monkeypatch.setattr(transport_module, 'LocalWitnessUnixServer', unexpected_server)
+    with pytest.raises(WitnessTransportDenied):
+        transport_module.serve_config(path)
+    assert state.read_bytes() == before
+    assert not (tmp_path/'witness.sock').exists()
+
+
 @pytest.mark.parametrize('allowlist', [
     'ab', {'a': True, 'b': False}, None, True, 1,
     [1], [''], ['a', 'a'], ['unknown'],

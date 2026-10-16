@@ -47,6 +47,16 @@ def _digest(value):
     return value
 
 
+def _valid_name(value):
+    if type(value) is not str or not value:
+        return False
+    try:
+        value.encode('utf-8')
+    except UnicodeError:
+        return False
+    return True
+
+
 def request_mac(key: bytes, caller_id: str, request: dict, key_id='caller-v1', *, exchange_nonce=None) -> str:
     """Fixture client helper. Callers must keep the key outside request data."""
     domain = _REQUEST_DOMAIN
@@ -61,6 +71,8 @@ def request_mac(key: bytes, caller_id: str, request: dict, key_id='caller-v1', *
 def verify_response(key: bytes, envelope: dict, key_id='caller-v1', *,
                     expected_request_mac=None, expected_request=None) -> dict:
     """Authenticate captured replies; active callers supply both request expectations."""
+    if not _valid_name(key_id):
+        raise WitnessDenied('witness response key identity unavailable')
     if type(envelope) is not dict or set(envelope) != {'body', 'key_id', 'request_mac', 'mac'} or envelope['key_id'] != key_id:
         raise WitnessDenied('witness response unavailable')
     body, mac = envelope['body'], envelope['mac']
@@ -114,7 +126,7 @@ def _validate_response_body(request, body):
     if request['operation'] == 'reserve':
         _digest(body['intent_sha256'])
         _digest(body['ticket_mac'])
-        if type(body['state_key_id']) is not str or not body['state_key_id']:
+        if not _valid_name(body['state_key_id']):
             raise WitnessDenied('witness response state key unavailable')
 
 
@@ -133,11 +145,11 @@ class DurableLocalRecoveryWitness:
             raise WitnessDenied('witness key configuration unavailable')
         caller_keyrings = {}
         for name, keys in caller_keys.items():
-            if type(name) is not str or not name:
+            if not _valid_name(name):
                 raise WitnessDenied('witness key configuration unavailable')
             keys = {'caller-v1': keys} if type(keys) is bytes else keys
             if (not isinstance(keys, dict) or not keys or
-                    any(type(key_id) is not str or not key_id or type(key) is not bytes or len(key) != 32
+                    any(not _valid_name(key_id) or type(key) is not bytes or len(key) != 32
                         for key_id, key in keys.items())):
                 raise WitnessDenied('witness key configuration unavailable')
             caller_keyrings[name] = dict(keys)
@@ -145,14 +157,14 @@ class DurableLocalRecoveryWitness:
             current_caller_key_ids = {name: 'caller-v1' for name in caller_keyrings}
         if (not isinstance(current_caller_key_ids, dict) or
                 set(current_caller_key_ids) != set(caller_keyrings) or
-                any(type(key_id) is not str or key_id not in caller_keyrings[name]
+                any(not _valid_name(key_id) or key_id not in caller_keyrings[name]
                     for name, key_id in current_caller_key_ids.items()) or
                 not isinstance(state_keys, dict) or not state_keys or
-                any(type(key_id) is not str or not key_id or type(key) is not bytes or len(key) != 32
+                any(not _valid_name(key_id) or type(key) is not bytes or len(key) != 32
                     for key_id, key in state_keys.items()) or
-                type(current_state_key_id) is not str or current_state_key_id not in state_keys or
+                not _valid_name(current_state_key_id) or current_state_key_id not in state_keys or
                 not isinstance(advance_callers, (set, frozenset)) or
-                any(type(name) is not str or name not in caller_keyrings for name in advance_callers)):
+                any(not _valid_name(name) or name not in caller_keyrings for name in advance_callers)):
             raise WitnessDenied('witness key configuration unavailable')
         self._caller_keys = caller_keyrings
         self._current_caller_key_ids = dict(current_caller_key_ids)

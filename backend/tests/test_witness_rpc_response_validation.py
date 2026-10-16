@@ -328,7 +328,8 @@ class WitnessResponseValidationTests(unittest.TestCase):
             'invocation_id': {'invocation_id': str(uuid4())},
             'intent': {'intent_sha256': 'b' * 64},
             'nonce': {'nonce': 'not-a-uuid'}, 'ticket_mac': {'ticket_mac': 'not-a-mac'},
-            'state_key': {'state_key_id': ''}, 'status': {'status': 'spent'},
+            'state_key': {'state_key_id': ''}, 'state_key_surrogate': {'state_key_id': '\ud800'},
+            'status': {'status': 'spent'},
             'extra': {'extra': True}, 'missing': {}}
         for label, update in updates.items():
             def payload(frame):
@@ -396,6 +397,46 @@ class WitnessResponseValidationTests(unittest.TestCase):
                 with self.assertRaises(WitnessDenied):
                     verify_response(self.key, self.response, **expected)
         self.assertEqual(verify_response(self.key, self.response), self.response['body'])
+
+    def test_client_rejects_invalid_unicode_and_unhashable_identity_config(self):
+        configs = []
+        for bad in ('\ud800', '\udfff'):
+            configs.append({'caller_id': bad, 'key': self.key})
+            configs.append({'caller_id': self.caller, 'keys': {bad: self.key}, 'current_key_id': bad})
+        configs.append({'caller_id': self.caller, 'key': self.key, 'current_key_id': []})
+        path = self.root/'unused.sock'
+        for index, config in enumerate(configs):
+            with self.subTest(config=index):
+                with self.assertRaises(WitnessTransportDenied):
+                    UnixWitnessClient(path, **config)
+        self.assertFalse(path.exists())
+
+    def test_response_verifier_rejects_invalid_expected_key_identity(self):
+        for index, bad in enumerate(('\ud800', '\udfff', [])):
+            with self.subTest(identity=index):
+                reply = {**self.response, 'key_id': bad}
+                with self.assertRaises(WitnessDenied):
+                    verify_response(self.key, reply, bad)
+
+    def test_valid_unicode_client_identities_round_trip_over_local_socket(self):
+        caller, key_id, state_id = 'RPC-😀', 'caller-鍵', 'state-🔐'
+        witness = DurableLocalRecoveryWitness(self.root/'unicode'/'state.sqlite3',
+            caller_keys={caller: {key_id: self.key}}, current_caller_key_ids={caller: key_id},
+            state_keys={state_id: b's' * 32}, current_state_key_id=state_id, initialize=True)
+        path = self.root/'unicode.sock'
+        with LocalWitnessUnixServer(witness, path):
+            client = UnixWitnessClient(path, caller_id=caller, keys={key_id: self.key}, current_key_id=key_id)
+            request = {'operation': 'reserve', 'request_id': str(uuid4()),
+                'ledger_id': str(uuid4()), 'invocation_id': str(uuid4()), 'intent_sha256': 'a' * 64}
+            ticket = client.request(request)
+            self.assertEqual(ticket['state_key_id'], state_id)
+            consume = {'operation': 'consume', **{key: ticket[key] for key in
+                ('request_id', 'ledger_id', 'invocation_id', 'intent_sha256',
+                 'generation', 'state_key_id', 'nonce', 'ticket_mac')}}
+            self.assertEqual(client.request(consume)['status'], 'spent')
+        with sqlite3.connect(witness.path) as db:
+            self.assertEqual(db.execute('SELECT caller_id, caller_key_id FROM witness_events').fetchall(),
+                [(caller, key_id), (caller, key_id)])
 
 
 if __name__ == '__main__':
