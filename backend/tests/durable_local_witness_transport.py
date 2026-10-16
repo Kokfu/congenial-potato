@@ -100,7 +100,8 @@ class _UnixHandler(socketserver.BaseRequestHandler):
             _, peer_uid, _ = struct.unpack('3i', raw)
             if peer_uid != self.server.allowed_uid:
                 raise WitnessTransportDenied('peer identity unavailable')
-            envelope = json.loads(_read_frame(connection).decode('ascii'))
+            envelope = json.loads(_read_frame(connection).decode('ascii'),
+                object_pairs_hook=_unique_json_object)
             if (type(envelope) is not dict or set(envelope) != {'caller_id','caller_key_id','request','mac'} or
                     type(envelope['caller_id']) is not str or type(envelope['request']) is not dict):
                 raise WitnessTransportDenied('witness request unavailable')
