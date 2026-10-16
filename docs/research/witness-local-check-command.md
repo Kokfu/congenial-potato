@@ -28,4 +28,6 @@ A second invocation set `PYTEST_ADDOPTS=--not-a-pytest-option` and `PYTEST_PLUGI
 
 ## Scope
 
+Phase 8.4as follow-up: [the static product/fixture import guard](witness-product-import-boundary-validation.md) now runs before pytest. It passed across 65 product Python files, followed by 86 local cases and 15 compilation checks; three isolated forbidden-import probes were rejected before pytest. The guard parses source only and does not claim to analyze dynamic imports or prove the full runtime dispatch boundary.
+
 This is a developer check for local synthetic evidence, including expected rollback failures. It does not expand the [acceptance claims](witness-local-acceptance-matrix.md) or implement the [external lifecycle prerequisites](witness-trust-boundary-lifecycle.md). Physical power loss and protected infrastructure remain untested; product dispatch, real external writes, paid models, deployment and production integration remain disabled.
