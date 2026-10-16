@@ -217,3 +217,27 @@ def test_witness_outage_blocks_fake_ledger_and_restored_state_stays_spent(tmp_pa
     with sqlite3.connect(witness_path) as db:
         assert db.execute('SELECT count(*) FROM reservations WHERE consumed=1').fetchone()[0] == 1
 
+
+def test_unauthenticated_request_and_tampered_reservation_reply_stop_before_effect(tmp_path, monkeypatch):
+    intent, control, ledger_dir, ledger_path, _, witness_path, witness = setup(tmp_path)
+    invocation = str(intent.scope.invocation_id)
+    reserve = {'operation': 'reserve', 'request_id': invocation,
+        'ledger_id': str(intent.ledger_id), 'invocation_id': invocation,
+        'intent_sha256': intent_digest(intent)}
+    with pytest.raises(WitnessDenied, match='caller authentication'):
+        witness.reserve(caller_id=CALLER, request=reserve, mac='0' * 64)
+
+    # Model a response modified in transit: the client must verify before consuming it.
+    monkeypatch.setattr(witness, 'reserve', lambda **kwargs: {
+        'body': {'status': 'reserved', **reserve}, 'key_id': 'caller-v1',
+        'mac': '0' * 64})
+    with pytest.raises(WitnessDenied, match='response authentication'):
+        apply_through_fixture(witness, intent, control, ledger_dir)
+    with sqlite3.connect(witness_path) as db:
+        assert db.execute('SELECT count(*) FROM reservations').fetchone()[0] == 0
+    with sqlite3.connect(control) as db:
+        assert db.execute('SELECT count(*) FROM admission').fetchone()[0] == 0
+    with sqlite3.connect(ledger_path) as db:
+        assert db.execute('SELECT count(*) FROM records').fetchone()[0] == 0
+        assert db.execute('SELECT count(*) FROM attempts').fetchone()[0] == 0
+
