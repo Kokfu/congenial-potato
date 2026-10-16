@@ -133,7 +133,10 @@ class DurableLocalRecoveryWitness:
                         generation INTEGER NOT NULL,
                         request_id TEXT,
                         invocation_id TEXT,
-                        binding_sha256 TEXT NOT NULL
+                        binding_sha256 TEXT NOT NULL,
+                        caller_id TEXT NOT NULL,
+                        caller_key_id TEXT NOT NULL,
+                        state_key_id TEXT
                     );
                     CREATE TABLE generation_operations (
                         request_id TEXT PRIMARY KEY,
@@ -187,10 +190,12 @@ class DurableLocalRecoveryWitness:
                 'nonce': nonce, 'state_key_id': state_key_id}
         return hmac.digest(state_key, _TICKET_DOMAIN + _canonical(body), 'sha256').hex()
 
-    def _record(self, db, event, generation, request_id, invocation_id, binding):
-        db.execute('INSERT INTO witness_events(event,generation,request_id,invocation_id,binding_sha256) '
-                   'VALUES(?,?,?,?,?)', (event, generation, request_id, invocation_id,
-                                         hashlib.sha256(_canonical(binding)).hexdigest()))
+    def _record(self, db, event, generation, request_id, invocation_id, binding,
+                caller_id, caller_key_id, state_key_id=None):
+        db.execute('INSERT INTO witness_events(event,generation,request_id,invocation_id,binding_sha256,caller_id,caller_key_id,state_key_id) '
+                   'VALUES(?,?,?,?,?,?,?,?)', (event, generation, request_id, invocation_id,
+                       hashlib.sha256(_canonical(binding)).hexdigest(), caller_id,
+                       caller_key_id, state_key_id))
 
     def generation(self, *, caller_id, request, mac, caller_key_id='caller-v1'):
         key = self._authenticate(caller_id, request, mac, caller_key_id)
@@ -240,7 +245,8 @@ class DurableLocalRecoveryWitness:
                 db.execute('INSERT INTO reservations(request_id,caller_id,ledger_id,invocation_id,intent_sha256,generation,state_key_id,nonce,ticket_mac) VALUES(?,?,?,?,?,?,?,?,?)',
                            (request_id,caller_id,ledger_id,invocation_id,intent_sha256,
                             generation,state_key_id,nonce,ticket_mac))
-                self._record(db, 'reserved', generation, request_id, invocation_id, binding)
+                self._record(db, 'reserved', generation, request_id, invocation_id, binding,
+                    caller_id, caller_key_id, state_key_id)
                 row = db.execute('SELECT * FROM reservations WHERE request_id=?', (request_id,)).fetchone()
                 body = self._reservation_body(row)
                 db.commit()
@@ -296,7 +302,8 @@ class DurableLocalRecoveryWitness:
                 if row['consumed']:
                     raise WitnessDenied('witness invocation already consumed or unknown')
                 db.execute('UPDATE reservations SET consumed=1 WHERE request_id=? AND consumed=0', (request_id,))
-                self._record(db, 'consumed', row['generation'], request_id, invocation_id, binding)
+                self._record(db, 'consumed', row['generation'], request_id, invocation_id,
+                    binding, caller_id, caller_key_id, row['state_key_id'])
                 db.commit()
                 body = {'status': 'spent', 'generation': row['generation'],
                         'request_id': request_id, 'invocation_id': invocation_id}
@@ -333,7 +340,8 @@ class DurableLocalRecoveryWitness:
                 db.execute('INSERT INTO generation_operations VALUES (?,?,?)',
                     (request_id, caller_id, generation))
                 self._record(db, 'generation_advanced', generation, request_id, None,
-                    {'request_id': request_id, 'generation': generation})
+                    {'request_id': request_id, 'generation': generation},
+                    caller_id, caller_key_id)
                 db.commit()
                 return self._envelope(key, {'generation': generation,
                     'request_id': request_id, 'status': 'advanced'}, caller_key_id)

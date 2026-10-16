@@ -305,6 +305,8 @@ def test_caller_key_rotation_overlap_and_retirement_preserve_stable_admin_identi
         advance_callers={CALLER})
     assert call(rotated, reservation_request, key=old_key, key_id='caller-v1') == reservation
     assert call(rotated, reservation_request, key=new_key, key_id='caller-v2') == reservation
+    assert call(rotated, consume_request(reservation), key=new_key,
+        key_id='caller-v2')['status'] == 'spent'
     advance = {'operation':'advance','request_id':str(uuid4())}
     assert call(rotated, advance, key=new_key, key_id='caller-v2')['generation'] == 2
     retired = DurableLocalRecoveryWitness(path,
@@ -315,6 +317,14 @@ def test_caller_key_rotation_overlap_and_retirement_preserve_stable_admin_identi
         call(retired, {'operation':'generation'}, key=old_key, key_id='caller-v1')
     assert call(retired, {'operation':'generation'}, key=new_key,
         key_id='caller-v2')['generation'] == 2
+    with sqlite3.connect(path) as db:
+        audit = db.execute('SELECT event,caller_id,caller_key_id,state_key_id '
+            'FROM witness_events ORDER BY sequence').fetchall()
+    assert audit == [
+        ('reserved', CALLER, 'caller-v1', 'state-v1'),
+        ('consumed', CALLER, 'caller-v2', 'state-v1'),
+        ('generation_advanced', CALLER, 'caller-v2', None),
+    ]
 
 
 def test_restoring_app_and_fake_ledger_fixtures_does_not_restore_separate_witness_file(tmp_path):
