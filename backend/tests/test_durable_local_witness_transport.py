@@ -1,5 +1,6 @@
 """Process-boundary checks for authenticated local Unix-socket witness RPC."""
 import hashlib
+import errno
 import json
 import os
 import shutil
@@ -32,16 +33,16 @@ def start_server(config_path):
     server_script = source_dir/'run_durable_local_witness_server.py'
     env = dict(os.environ)
     env['PYTHONPATH'] = str(source_dir) + os.pathsep + env.get('PYTHONPATH', '')
-    socket_path = json.loads(config_path.read_text())['socket_path']
-    try:
-        old_socket = Path(socket_path).lstat()
-    except FileNotFoundError:
-        old_socket = None
-    if old_socket is not None:
-        import stat
-        if not stat.S_ISSOCK(old_socket.st_mode) or old_socket.st_uid != os.getuid():
-            raise AssertionError('unexpected stale witness socket type or owner')
-        Path(socket_path).unlink()
+    config = json.loads(config_path.read_text())
+    socket_path = config['socket_path']
+    if 'caller_keyrings' in config:
+        keys = {key_id: bytes.fromhex(value) for key_id, value in config['caller_keyrings'][CALLER].items()}
+        current_key_id = config['current_caller_key_ids'][CALLER]
+    else:
+        keys = {'caller-v1': bytes.fromhex(config['caller_keys'][CALLER])}
+        current_key_id = 'caller-v1'
+    readiness = UnixWitnessClient(socket_path, caller_id=CALLER, keys=keys,
+        current_key_id=current_key_id, timeout=0.1)
     process = subprocess.Popen([sys.executable, str(server_script), str(config_path)],
         env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
     deadline = time.monotonic() + 5
@@ -50,7 +51,12 @@ def start_server(config_path):
             _, error = process.communicate(timeout=2)
             raise AssertionError(f'local witness server exited during startup: {error}')
         if Path(socket_path).exists():
-            return process
+            try:
+                readiness.request({'operation': 'generation'})
+            except WitnessTransportDenied:
+                pass
+            else:
+                return process
         time.sleep(0.01)
     process.terminate()
     process.wait(timeout=2)
@@ -766,3 +772,92 @@ def test_server_replaces_owned_stale_socket_path_only(tmp_path):
     with LocalWitnessUnixServer(witness, path):
         client = UnixWitnessClient(path, caller_id=CALLER, key=CALLER_KEY)
         assert client.request({'operation':'generation'})['generation'] == 1
+
+
+def test_server_refuses_to_replace_an_active_owned_socket(tmp_path):
+    directory = tmp_path/'private'
+    directory.mkdir(mode=0o700)
+    path = directory/'witness.sock'
+    first = DurableLocalRecoveryWitness(tmp_path/'first.sqlite3',
+        caller_keys={CALLER: CALLER_KEY}, state_key=STATE_KEY, initialize=True)
+    other = DurableLocalRecoveryWitness(tmp_path/'other.sqlite3',
+        caller_keys={CALLER: CALLER_KEY}, state_key=STATE_KEY, initialize=True)
+    with LocalWitnessUnixServer(first, path):
+        original = path.lstat()
+        before = (first.path.read_bytes(), other.path.read_bytes())
+        second = LocalWitnessUnixServer(other, path)
+        try:
+            with pytest.raises(WitnessTransportDenied, match='active'):
+                second.start()
+        finally:
+            second.close()
+        current = path.lstat()
+        assert (current.st_dev, current.st_ino) == (original.st_dev, original.st_ino)
+        client = UnixWitnessClient(path, caller_id=CALLER, key=CALLER_KEY)
+        assert client.request({'operation': 'generation'})['generation'] == 1
+        assert (first.path.read_bytes(), other.path.read_bytes()) == before
+
+
+@pytest.mark.parametrize('probe_error', [TimeoutError(), PermissionError(errno.EACCES, 'fixture denied')])
+def test_server_does_not_unlink_socket_when_liveness_is_unknown(tmp_path, monkeypatch, probe_error):
+    directory = tmp_path/'private'
+    directory.mkdir(mode=0o700)
+    path = directory/'witness.sock'
+    witness = DurableLocalRecoveryWitness(tmp_path/'state.sqlite3',
+        caller_keys={CALLER: CALLER_KEY}, state_key=STATE_KEY, initialize=True)
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stale:
+        stale.bind(str(path))
+        before = path.lstat()
+
+        class Probe:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                pass
+
+            def settimeout(self, timeout):
+                pass
+
+            def connect(self, address):
+                raise probe_error
+
+        monkeypatch.setattr(transport_module.socket, 'socket', lambda *args: Probe())
+        with pytest.raises(WitnessTransportDenied):
+            LocalWitnessUnixServer(witness, path).start()
+        after = path.lstat()
+        assert (after.st_dev, after.st_ino) == (before.st_dev, before.st_ino)
+
+
+def test_server_does_not_unlink_a_replacement_socket_after_stale_probe(tmp_path, monkeypatch):
+    directory = tmp_path/'private'
+    directory.mkdir(mode=0o700)
+    path = directory/'witness.sock'
+    witness = DurableLocalRecoveryWitness(tmp_path/'state.sqlite3',
+        caller_keys={CALLER: CALLER_KEY}, state_key=STATE_KEY, initialize=True)
+    real_socket = socket.socket
+    with real_socket(socket.AF_UNIX, socket.SOCK_STREAM) as old:
+        old.bind(str(path))
+        before = path.lstat()
+        with real_socket(socket.AF_UNIX, socket.SOCK_STREAM) as replacement:
+            class Probe:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *args):
+                    pass
+
+                def settimeout(self, timeout):
+                    pass
+
+                def connect(self, address):
+                    path.unlink()
+                    replacement.bind(str(path))
+                    raise ConnectionRefusedError(errno.ECONNREFUSED, 'fixture stale endpoint')
+
+            monkeypatch.setattr(transport_module.socket, 'socket', lambda *args: Probe())
+            with pytest.raises(WitnessTransportDenied):
+                LocalWitnessUnixServer(witness, path).start()
+            after = path.lstat()
+            assert (after.st_dev, after.st_ino) != (before.st_dev, before.st_ino)
+            assert path.exists()

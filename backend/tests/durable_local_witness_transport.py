@@ -1,5 +1,6 @@
 """Private Unix-socket RPC prototype; test-only and same-host only."""
 import json
+import errno
 import os
 import socket
 import socketserver
@@ -155,7 +156,23 @@ class LocalWitnessUnixServer:
         if existing is not None:
             if (not stat.S_ISSOCK(existing.st_mode) or existing.st_uid != os.getuid()):
                 raise WitnessTransportDenied('witness socket path unavailable')
-            self.socket_path.unlink()
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+                probe.settimeout(0.2)
+                try:
+                    probe.connect(str(self.socket_path))
+                except OSError as error:
+                    if error.errno != errno.ECONNREFUSED:
+                        raise WitnessTransportDenied('witness socket liveness unavailable') from None
+                else:
+                    raise WitnessTransportDenied('witness socket already active')
+            try:
+                current = self.socket_path.lstat()
+                if ((current.st_dev, current.st_ino) != (existing.st_dev, existing.st_ino) or
+                        not stat.S_ISSOCK(current.st_mode) or current.st_uid != os.getuid()):
+                    raise WitnessTransportDenied('witness socket path changed')
+                self.socket_path.unlink()
+            except OSError:
+                raise WitnessTransportDenied('witness socket path unavailable') from None
         server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             server.bind(str(self.socket_path))
