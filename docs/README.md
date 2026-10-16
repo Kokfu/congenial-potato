@@ -92,6 +92,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 84. [Local witness state-key rotation across processes](research/witness-state-process-key-rotation-validation.md)
 85. [Caller-key rotation consume concurrency](research/witness-rotation-consume-concurrency-validation.md)
 86. [Recovery-admin key rotation concurrency](research/witness-admin-key-race-validation.md)
+87. [Separate-process witness consume race](research/witness-process-consume-race-validation.md)
 
 ## Architecture
 
