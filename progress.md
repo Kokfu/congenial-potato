@@ -18,6 +18,8 @@ Phase 8.4ah: restoring pre-effect copies of the local witness, control fixture, 
 
 Phase 8.4ai reruns the combined durable witness, fake-ledger recovery, and local RPC suites: 46 pytest cases pass, along with Python compilation and 9 in-memory regressions. The acceptance matrix now records generation rewind and coordinated full-fixture rollback as observed limitations. Evidence: `docs/research/witness-local-acceptance-matrix.md`.
 
+Phase 8.4aj updates the witness lifecycle prerequisites with the demonstrated replay after coordinated witness/control/fake-ledger rollback, and specifies isolated anti-rollback state plus reconciliation of divergent restores as an external requirement. Documentation links and whitespace checks pass; no runtime guarantees are added. Evidence: `docs/research/witness-trust-boundary-lifecycle.md`.
+
 ## Phase 1 tasks
 
 - [x] **1.1 Repository and persistence foundation.** Pin dependencies. Create typed FastAPI application and separate worker entry point. Add PostgreSQL models and Alembic migrations for owner/session, project, agent/config revision, task/execution, authorization/audit/outbox, root budget reservations, approvals, and immutable artifact metadata. Verify migrations on a clean database.
