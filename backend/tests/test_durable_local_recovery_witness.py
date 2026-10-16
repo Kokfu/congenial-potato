@@ -51,12 +51,12 @@ def consume_request(reservation):
 
 def create(path):
     return DurableLocalRecoveryWitness(path, caller_keys={CALLER: CALLER_KEY},
-        state_key=STATE_KEY, initialize=True)
+        state_key=STATE_KEY, advance_callers={CALLER}, initialize=True)
 
 
 def reopen(path):
     return DurableLocalRecoveryWitness(path, caller_keys={CALLER: CALLER_KEY},
-        state_key=STATE_KEY)
+        state_key=STATE_KEY, advance_callers={CALLER})
 
 
 def test_reservation_retry_is_idempotent_and_exact_binding_is_required(tmp_path):
@@ -205,7 +205,7 @@ def test_generation_advance_rejects_request_identity_reuse_by_other_caller(tmp_p
     path = tmp_path/'witness.sqlite3'
     witness = DurableLocalRecoveryWitness(path,
         caller_keys={CALLER: CALLER_KEY, 'other-caller': b'o'*32},
-        state_key=STATE_KEY, initialize=True)
+        state_key=STATE_KEY, advance_callers={CALLER, 'other-caller'}, initialize=True)
     request = {'operation': 'advance', 'request_id': str(uuid4())}
     assert call(witness, request)['generation'] == 2
     with pytest.raises(WitnessDenied, match='operation conflict'):
@@ -226,6 +226,18 @@ def test_concurrent_duplicate_generation_advance_increments_once(tmp_path):
     assert len(set(tuple(sorted(reply.items())) for reply in replies)) == 1
     assert replies[0]['generation'] == 2
     assert call(reopen(path), {'operation': 'generation'})['generation'] == 2
+
+
+def test_authenticated_non_admin_caller_cannot_advance_generation(tmp_path):
+    witness = DurableLocalRecoveryWitness(tmp_path/'witness.sqlite3',
+        caller_keys={CALLER: CALLER_KEY, 'ordinary-caller': b'o'*32},
+        state_key=STATE_KEY, advance_callers={CALLER}, initialize=True)
+    request = {'operation': 'advance', 'request_id': str(uuid4())}
+    with pytest.raises(WitnessDenied, match='administrator'):
+        dispatch(witness, request, caller='ordinary-caller', key=b'o'*32)
+    assert call(witness, {'operation': 'generation'})['generation'] == 1
+    with sqlite3.connect(witness.path) as db:
+        assert db.execute('SELECT count(*) FROM generation_operations').fetchone()[0] == 0
 
 
 def test_restoring_app_and_fake_ledger_fixtures_does_not_restore_separate_witness_file(tmp_path):
