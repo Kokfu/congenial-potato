@@ -1021,3 +1021,118 @@ def test_request_completed_after_server_close_does_not_create_a_reservation(tmp_
     finally:
         server.close()
     assert witness.path.read_bytes() == before
+
+
+@pytest.mark.parametrize('mode', ['wait', 'timeout'])
+def test_close_waits_for_admitted_dispatch_or_reports_unknown(tmp_path, monkeypatch, mode):
+    monkeypatch.setattr(transport_module, '_DRAIN_TIMEOUT', 0.05 if mode == 'timeout' else 2.0, raising=False)
+    entered, release, closed = threading.Event(), threading.Event(), threading.Event()
+    directory = tmp_path/'private'
+    directory.mkdir(mode=0o700)
+    path = directory/'witness.sock'
+    witness = DurableLocalRecoveryWitness(tmp_path/'state.sqlite3',
+        caller_keys={CALLER: CALLER_KEY}, state_key=STATE_KEY,
+        advance_callers={CALLER}, initialize=True)
+    original_advance = witness.advance_generation
+
+    def paused_advance(**kwargs):
+        entered.set()
+        assert release.wait(timeout=5), 'fixture dispatch was not released'
+        return original_advance(**kwargs)
+
+    monkeypatch.setattr(witness, 'advance_generation', paused_advance)
+    server = LocalWitnessUnixServer(witness, path).start()
+    replies, errors = [], []
+
+    def call():
+        try:
+            replies.append(UnixWitnessClient(path, caller_id=CALLER, key=CALLER_KEY).request(
+                {'operation': 'advance', 'request_id': str(uuid4())}))
+        except Exception as error:
+            errors.append(error)
+
+    def close():
+        try:
+            server.close()
+        except Exception as error:
+            errors.append(error)
+        finally:
+            closed.set()
+
+    caller = threading.Thread(target=call, daemon=True)
+    closer = None
+    caller.start()
+    try:
+        assert entered.wait(timeout=2), 'request was not admitted'
+        if mode == 'timeout':
+            with pytest.raises(WitnessTransportDenied, match='in-flight'):
+                server.close()
+        else:
+            closer = threading.Thread(target=close, daemon=True)
+            closer.start()
+            assert server._stop.wait(timeout=2)
+            assert not closed.wait(timeout=0.5), 'close returned before admitted dispatch completed'
+        with sqlite3.connect(witness.path) as db:
+            assert db.execute('SELECT generation FROM witness_state').fetchone()[0] == 1
+        release.set()
+        caller.join(timeout=2)
+        if closer is not None:
+            closer.join(timeout=2)
+            assert closed.is_set()
+        assert not caller.is_alive()
+        assert errors == []
+        assert len(replies) == 1 and replies[0]['generation'] == 2
+    finally:
+        release.set()
+        caller.join(timeout=2)
+        if closer is not None:
+            closer.join(timeout=2)
+        server.close()
+    with sqlite3.connect(witness.path) as db:
+        assert db.execute('SELECT generation FROM witness_state').fetchone()[0] == 2
+        assert db.execute('SELECT count(*) FROM generation_operations').fetchone()[0] == 1
+        assert db.execute('SELECT count(*) FROM witness_events').fetchone()[0] == 1
+
+
+def test_shutdown_rejects_dispatch_that_passed_the_early_stop_check(tmp_path):
+    lookup, release = threading.Event(), threading.Event()
+    directory = tmp_path/'private'
+    directory.mkdir(mode=0o700)
+    path = directory/'witness.sock'
+    witness = DurableLocalRecoveryWitness(tmp_path/'state.sqlite3',
+        caller_keys={CALLER: CALLER_KEY}, state_key=STATE_KEY,
+        advance_callers={CALLER}, initialize=True)
+
+    class PausedLookup:
+        def __getattr__(self, name):
+            if name == 'advance_generation':
+                lookup.set()
+                assert release.wait(timeout=5), 'fixture method lookup was not released'
+            return getattr(witness, name)
+
+    server = LocalWitnessUnixServer(PausedLookup(), path).start()
+    outcomes = []
+
+    def call():
+        try:
+            result = UnixWitnessClient(path, caller_id=CALLER, key=CALLER_KEY).request(
+                {'operation': 'advance', 'request_id': str(uuid4())})
+            outcomes.append(result)
+        except WitnessTransportDenied:
+            outcomes.append('denied')
+
+    before = witness.path.read_bytes()
+    caller = threading.Thread(target=call, daemon=True)
+    caller.start()
+    try:
+        assert lookup.wait(timeout=2), 'handler did not pass the early stop check'
+        server.close()
+        release.set()
+        caller.join(timeout=2)
+        assert not caller.is_alive()
+        assert outcomes == ['denied']
+        assert witness.path.read_bytes() == before
+    finally:
+        release.set()
+        caller.join(timeout=2)
+        server.close()

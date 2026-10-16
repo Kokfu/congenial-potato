@@ -17,6 +17,7 @@ from durable_local_recovery_witness import (DurableLocalRecoveryWitness,
 _MAX_FRAME = 16 * 1024
 _FRAME_TIMEOUT = 2.0
 _MAX_CONNECTIONS = 32
+_DRAIN_TIMEOUT = 2.0
 
 
 class WitnessTransportDenied(ConnectionError):
@@ -131,7 +132,7 @@ class _UnixHandler(socketserver.BaseRequestHandler):
             method = methods.get(operation)
             if method is None:
                 raise WitnessDenied('witness request unavailable')
-            response = method(caller_id=envelope['caller_id'], request=envelope['request'],
+            response = self.server._dispatch(method, caller_id=envelope['caller_id'], request=envelope['request'],
                               mac=envelope['mac'], caller_key_id=envelope['caller_key_id'],
                               exchange_nonce=envelope['exchange_nonce'])
         except (WitnessDenied, WitnessTransportDenied, OSError, UnicodeError,
@@ -154,6 +155,8 @@ class LocalWitnessUnixServer:
         self._thread = None
         self._socket_identity = None
         self._connection_slots = threading.BoundedSemaphore(_MAX_CONNECTIONS)
+        self._dispatch_condition = threading.Condition()
+        self._active_dispatches = 0
 
     def start(self):
         parent = self.socket_path.parent
@@ -230,12 +233,32 @@ class LocalWitnessUnixServer:
         finally:
             self._connection_slots.release()
 
+    def _dispatch(self, method, **kwargs):
+        with self._dispatch_condition:
+            if self._stop.is_set():
+                raise WitnessTransportDenied('witness server stopped')
+            self._active_dispatches += 1
+        try:
+            return method(**kwargs)
+        finally:
+            with self._dispatch_condition:
+                self._active_dispatches -= 1
+                self._dispatch_condition.notify_all()
+
     def close(self):
-        self._stop.set()
+        with self._dispatch_condition:
+            self._stop.set()
         if self._socket is not None:
             self._socket.close()
         if self._thread is not None:
             self._thread.join(timeout=2)
+        deadline = time.monotonic() + _DRAIN_TIMEOUT
+        with self._dispatch_condition:
+            while self._active_dispatches:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise WitnessTransportDenied('witness in-flight dispatch remains unknown')
+                self._dispatch_condition.wait(timeout=remaining)
         try:
             info = self.socket_path.lstat()
             if (stat.S_ISSOCK(info.st_mode) and
