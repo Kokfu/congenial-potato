@@ -30,6 +30,8 @@ Results: **46 pytest cases passed in 2.09s**; Python compilation passed; **9 in-
 
 ## Limits
 
+Follow-up Phase 8.4an: [per-exchange nonce binding](witness-rpc-exchange-freshness-validation.md) rejects captured replies for identical requests across different random exchanges. Nonce tampering fails before mutation and reservation retries keep one stable ticket body. **67 local cases passed**; this supplies neither anti-rollback storage nor a production transport boundary. The follow-ups below describe their historical results and limits.
+
 Follow-up Phase 8.4am: the [response/request binding increment](witness-rpc-response-binding-validation.md) signs the exact request MAC in a v2 response envelope and checks it at the RPC client. Mismatched operation/ticket/caller responses now reject; **63 local cases passed**. Identical-request response freshness remains unresolved, and the earlier follow-up results below describe their own historical checkpoints.
 
 Follow-up Phase 8.4al: the client rejects duplicate response JSON fields before authentication, including nested fields whose last value otherwise authenticates. The [RPC JSON evidence](witness-rpc-json-validation.md) records the regression and a combined local run of **58 cases** including all earlier 46 durable/protocol/process cases, nine in-memory regressions, the pending-snapshot audit drill and two response-parser tests. This does not add response freshness or request correlation.

@@ -68,6 +68,7 @@ import json, os, sys, time
 import socket
 from pathlib import Path
 from durable_local_witness_transport import UnixWitnessClient
+from uuid import uuid4
 from durable_local_recovery_witness import WitnessDenied, request_mac
 from durable_local_witness_transport import WitnessTransportDenied
 config=json.load(open(sys.argv[1]))
@@ -112,8 +113,10 @@ elif mode == 'drop-consume-reply':
     consume={'operation':'consume',**{key:ticket[key] for key in
         ('request_id','ledger_id','invocation_id','intent_sha256','generation','state_key_id','nonce')},
         'ticket_mac':ticket['ticket_mac']}
+    exchange_nonce=str(uuid4())
     frame={'caller_id':'socket-fixture-caller','caller_key_id':'caller-v1',
-        'request':consume,'mac':request_mac(b'u'*32,'socket-fixture-caller',consume,'caller-v1')}
+        'request':consume,'exchange_nonce':exchange_nonce,
+        'mac':request_mac(b'u'*32,'socket-fixture-caller',consume,'caller-v1',exchange_nonce=exchange_nonce)}
     payload=json.dumps(frame,sort_keys=True,separators=(',',':')).encode('ascii')+b'\\n'
     connection=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
     connection.connect(config['socket_path'])
@@ -647,9 +650,11 @@ def test_server_rejects_duplicate_rpc_fields_before_reservation(tmp_path):
     request = {'operation':'reserve','request_id':str(uuid4()),
         'ledger_id':str(uuid4()),'invocation_id':str(uuid4()),
         'intent_sha256':'c'*64}
-    mac = request_mac(CALLER_KEY, CALLER, request)
-    frame = ('{"caller_id":'+json.dumps(CALLER)+',"request":'+json.dumps(request)+
-        ',"caller_id":'+json.dumps(CALLER)+',"mac":'+json.dumps(mac)+'}\n').encode()
+    nonce = str(uuid4())
+    mac = request_mac(CALLER_KEY, CALLER, request, exchange_nonce=nonce)
+    valid = json.dumps({'caller_id': CALLER, 'caller_key_id': 'caller-v1',
+        'request': request, 'exchange_nonce': nonce, 'mac': mac})
+    frame = ('{"caller_id":'+json.dumps(CALLER)+','+valid[1:]+'\n').encode()
     with LocalWitnessUnixServer(witness, socket_dir/'witness.sock'):
         with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as connection:
             connection.settimeout(2)
