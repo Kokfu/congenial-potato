@@ -16,6 +16,8 @@ Phase 8.4ag: a fixture restores a prior witness database after generation reache
 
 Phase 8.4ah: restoring pre-effect copies of the local witness, control fixture, and fake ledger permits the same intent to be admitted and applied again, producing a second distinct fake event ID; this confirms the local prototype cannot resist coordinated rollback of all its fixtures. Evidence: `docs/research/witness-coordinated-full-rollback-effect-validation.md`.
 
+Phase 8.4ai reruns the combined durable witness, fake-ledger recovery, and local RPC suites: 46 pytest cases pass, along with Python compilation and 9 in-memory regressions. The acceptance matrix now records generation rewind and coordinated full-fixture rollback as observed limitations. Evidence: `docs/research/witness-local-acceptance-matrix.md`.
+
 ## Phase 1 tasks
 
 - [x] **1.1 Repository and persistence foundation.** Pin dependencies. Create typed FastAPI application and separate worker entry point. Add PostgreSQL models and Alembic migrations for owner/session, project, agent/config revision, task/execution, authorization/audit/outbox, root budget reservations, approvals, and immutable artifact metadata. Verify migrations on a clean database.
