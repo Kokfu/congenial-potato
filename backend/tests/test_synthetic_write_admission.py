@@ -3,9 +3,12 @@ import hashlib
 import json
 import os
 import sqlite3
+import socket
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from tempfile import TemporaryDirectory
 from datetime import datetime, timezone
 from threading import Barrier
 from pathlib import Path
@@ -28,6 +31,9 @@ from workforce.tool_approval import _digest
 from test_tool_approval import decide, proposed_write
 from durable_local_recovery_witness import (DurableLocalRecoveryWitness,
     WitnessDenied, request_mac, verify_response)
+
+from durable_local_witness_transport import (LocalWitnessUnixServer,
+    UnixWitnessClient, WitnessTransportDenied)
 
 KEY = b'w' * 32
 LEDGER_ID = UUID('5f94d899-9e2c-4f4e-9d2f-62b62102ae51')
@@ -300,34 +306,52 @@ def test_joint_control_and_ledger_restore_exposes_reexecution_gap(authenticated,
         assert db.execute('SELECT count(*) FROM attempts').fetchone()[0] == 1
 
 
+@pytest.mark.parametrize('transport', ['direct', pytest.param('unix',
+    marks=pytest.mark.skipif(not hasattr(socket, 'SO_PEERCRED'),
+        reason='local peer credential transport requires Linux SO_PEERCRED'))])
 @pytest.mark.parametrize('rollback', ['control', 'ledger', 'both'])
-def test_live_witness_blocks_single_or_joint_store_rollback(authenticated, tmp_path, rollback):
+def test_live_witness_blocks_single_or_joint_store_rollback(authenticated, tmp_path, rollback, transport):
     invocation_id, intent, directory = prepared(authenticated, tmp_path)
     witness_path = tmp_path/'separate-witness-fixture'/'witness.sqlite3'
     witness = DurableLocalRecoveryWitness(witness_path,
         caller_keys={'synthetic-write-fixture': b'c'*32}, state_key=b'r'*32,
         initialize=True)
 
-    def authenticated_call(method, request):
-        caller_id = 'synthetic-write-fixture'
-        mac = request_mac(b'c'*32, caller_id, request)
-        envelope = method(caller_id=caller_id, request=request, mac=mac)
-        return verify_response(b'c'*32, envelope, expected_request_mac=mac, expected_request=request)
+    @contextmanager
+    def connected(witness):
+        if transport == 'unix':
+            # Keep AF_UNIX paths below the kernel limit even for long pytest IDs.
+            with TemporaryDirectory(prefix='witness-pg-') as private:
+                path = Path(private)/'w.sock'
+                with LocalWitnessUnixServer(witness, path):
+                    client = UnixWitnessClient(path,
+                        caller_id='synthetic-write-fixture', key=b'c'*32)
+                    yield client.request
+        else:
+            def authenticated_call(request):
+                caller_id = 'synthetic-write-fixture'
+                mac = request_mac(b'c'*32, caller_id, request)
+                method = getattr(witness, request['operation'])
+                envelope = method(caller_id=caller_id, request=request, mac=mac)
+                return verify_response(b'c'*32, envelope,
+                    expected_request_mac=mac, expected_request=request)
+            yield authenticated_call
 
-    def witnessed_effect():
+    def witnessed_effect(call):
         binding = {'operation': 'reserve', 'request_id': invocation_id,
             'ledger_id': str(intent.ledger_id), 'invocation_id': invocation_id,
             'intent_sha256': intent_digest(intent)}
-        permit = authenticated_call(witness.reserve, binding)
+        permit = call(binding)
         consume = {'operation': 'consume', **{key: permit[key] for key in
             ('request_id','ledger_id','invocation_id','intent_sha256','generation',
              'state_key_id','nonce')},
             'ticket_mac': permit['ticket_mac']}
-        authenticated_call(witness.consume, consume)
+        call(consume)
         return run(invocation_id, intent, directory)
 
-    witnessed_effect()
-    # A new process/object sees the durable consumed state before restores.
+    with connected(witness) as call:
+        witnessed_effect(call)
+    # Reopen the witness and, for Unix transport, start a new server instance.
     witness = DurableLocalRecoveryWitness(witness_path,
         caller_keys={'synthetic-write-fixture': b'c'*32}, state_key=b'r'*32)
     if rollback in ('control', 'both'):
@@ -338,8 +362,13 @@ def test_live_witness_blocks_single_or_joint_store_rollback(authenticated, tmp_p
     if rollback in ('ledger', 'both'):
         (directory/'ledger.sqlite3').unlink()
 
-    with pytest.raises(WitnessDenied, match='consumed'):
-        witnessed_effect()
+    denial = WitnessTransportDenied if transport == 'unix' else WitnessDenied
+    reason = 'denied or response unavailable' if transport == 'unix' else 'consumed'
+    with connected(witness) as call:
+        # Prove restarted transport/authentication are healthy before replay denial.
+        assert call({'operation': 'generation'})['generation'] == 1
+        with pytest.raises(denial, match=reason):
+            witnessed_effect(call)
     if rollback in ('control', 'both'):
         with session_factory()() as db:
             assert db.get(SyntheticWriteAdmission, invocation_id) is None
