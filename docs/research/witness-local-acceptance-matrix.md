@@ -1,6 +1,6 @@
-# Local witness acceptance matrix: Phase 8.4bg
+# Local witness acceptance matrix: Phase 8.4bh
 
-Date: 2026-10-16. Branch: `phase-8-witness-postgres-check-command`. Parent: draft PR [#130](https://github.com/Kokfu/congenial-potato/pull/130), commit `33a56137ee140c71523c63bacb334ecfa2ad759f`.
+Date: 2026-10-16. Branch: `phase-8-witness-admission-import-guard`. Parent: draft PR [#131](https://github.com/Kokfu/congenial-potato/pull/131), commit `d641cde4a13b083c74c9df49c993c747c3565f81`.
 
 This is the current local synthetic checkpoint. The fixture protocol, same-host transport and fake-ledger drills do not constitute an independent recovery service or product activation. Expected rollback and caller-effect limitations are recorded separately below.
 
@@ -12,7 +12,7 @@ This is the current local synthetic checkpoint. The fixture protocol, same-host 
 
 The [fixed local checker](witness-local-check-command.md) tests the checkout directly, isolates pytest options/plugins/configuration, excludes PostgreSQL conftest loading and compiles selected files to a temporary directory. Dependency setup is documented with that command.
 
-The latest six-module local runtime check is Phase 8.4bb: **120 local cases passed in 4.93s**, **65 product Python files passed the static fixture-import guard**, and **15 files compiled**. Separately, Phase 8.4bd passed **6 PostgreSQL-backed witness restore-wrapper cases in 9.76s** (three direct and three Unix-RPC), after fresh application/workflow migrations; see [RPC cases and limits](witness-postgres-rpc-restore-validation.md) and [database setup](witness-postgres-restore-wrapper-validation.md). The 120-case command was not rerun for this documentation increment. Collection-only inspection verified the exact six-module, 120-case inventory; changed-document links plus `git diff --check` passed.
+The latest six-module local runtime check is Phase 8.4bh: **120 local cases passed in 6.14s**, **65 product Python files passed the static fixture-import guard**, and **15 files compiled**. Separately, Phase 8.4bd passed **6 PostgreSQL-backed witness restore-wrapper cases in 9.76s** (three direct and three Unix-RPC), after fresh application/workflow migrations; see [RPC cases and limits](witness-postgres-rpc-restore-validation.md) and [database setup](witness-postgres-restore-wrapper-validation.md). The local command was rerun after expanding its static guard to admission/receipt fixtures; see [guard coverage](witness-admission-import-guard-validation.md). Collection-only inspection verified the exact six-module, 120-case inventory; changed-document links plus `git diff --check` passed.
 
 Phase 8.4be additionally passed the **complete 34-case admission file in 55.79s**, including those six restore cases and migration safeguards; see [admission regression checkpoint](witness-admission-regression-checkpoint.md). These counts overlap and must not be added together.
 
@@ -45,7 +45,7 @@ The [repository PostgreSQL command](witness-postgres-check-command.md) now repro
 | Local receive/load | Monotonic frame receive budget, 32 active-handler cap and slot recovery | [Receive deadline](witness-frame-receive-deadline-validation.md), [capacity](witness-connection-cap-validation.md) |
 | Stop/drain | Late-frame denial, atomic stop/admission, counted synchronous method drain, explicit unknown on drain expiry | [Stop gate](witness-stop-dispatch-gate-validation.md), [dispatch drain](witness-dispatch-drain-validation.md) |
 | Effect recovery | Real fake-ledger fixture records through retained-witness rollback/replacement, lost reply, outage and key changes | [Fake-ledger recovery](durable-witness-fake-ledger-recovery-validation.md), [lost reply](witness-lost-reply-effect-boundary-validation.md) |
-| Product/source boundary | Named static fixture imports denied in product Python before tests; no product runtime imported by that scan | [Static guard](witness-product-import-boundary-validation.md) |
+| Product/source boundary | Named static fixture imports denied in product Python before tests; no product runtime imported by that scan | [Static guard](witness-product-import-boundary-validation.md), [admission/receipt coverage](witness-admission-import-guard-validation.md) |
 
 These are scoped checks. HMAC/body validation authenticates fixture metadata, not execution truth or current authority. The client checks ticket-MAC shape without possessing the state signing key. A fresh exchange is not trusted time. The static import guard does not analyze dynamic loaders or prove the whole dispatch graph.
 
