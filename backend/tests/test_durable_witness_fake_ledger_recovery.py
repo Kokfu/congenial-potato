@@ -11,6 +11,7 @@ import pytest
 
 from durable_local_recovery_witness import (DurableLocalRecoveryWitness,
     WitnessDenied, request_mac, verify_response)
+from durable_local_witness_transport import LocalWitnessUnixServer, UnixWitnessClient
 from synthetic_write_ledger import SyntheticWriteLedger
 from workforce.synthetic_write_contract import (SyntheticWriteIntent, WriteScope,
     intent_digest, verify_write_receipt)
@@ -80,6 +81,54 @@ def apply_through_fixture(witness, intent, control_path, ledger_dir):
     ledger = SyntheticWriteLedger(ledger_dir, ledger_id=intent.ledger_id,
         key=LEDGER_KEY, experiment_enabled=True)
     return ledger.apply(intent, CONTENT)
+
+
+def test_successful_witness_drain_does_not_quiesce_an_already_consumed_caller_effect(tmp_path):
+    intent, control, ledger_dir, ledger_path, _, witness_path, witness = setup(tmp_path)
+    socket_dir = tmp_path/'socket-fixture'
+    socket_dir.mkdir(mode=0o700)
+    socket_path = socket_dir/'witness.sock'
+    invocation = str(intent.scope.invocation_id)
+    reserve = {'operation': 'reserve', 'request_id': invocation,
+        'ledger_id': str(intent.ledger_id), 'invocation_id': invocation,
+        'intent_sha256': intent_digest(intent)}
+    server = LocalWitnessUnixServer(witness, socket_path).start()
+    try:
+        client = UnixWitnessClient(socket_path, caller_id=CALLER, key=CALLER_KEY)
+        permit = client.request(reserve)
+        consume = {'operation': 'consume', **{key: permit[key] for key in
+            ('request_id', 'ledger_id', 'invocation_id', 'intent_sha256',
+             'generation', 'state_key_id', 'nonce', 'ticket_mac')}}
+        spent = client.request(consume)
+        assert spent['status'] == 'spent'
+        assert spent['invocation_id'] == invocation
+        server.close()  # succeeds: the witness protocol method has returned
+        assert not socket_path.exists()
+        witness_after_drain = witness_path.read_bytes()
+        with sqlite3.connect(control) as db:
+            assert db.execute('SELECT count(*) FROM admission').fetchone()[0] == 0
+        with sqlite3.connect(ledger_path) as db:
+            assert db.execute('SELECT count(*) FROM records').fetchone()[0] == 0
+            assert db.execute('SELECT count(*) FROM attempts').fetchone()[0] == 0
+
+        # The trusted fixture caller resumes after the witness has drained.
+        with sqlite3.connect(control) as db:
+            db.execute('INSERT INTO admission VALUES (?,?)', (invocation, 'unknown'))
+        ledger = SyntheticWriteLedger(ledger_dir, ledger_id=intent.ledger_id,
+            key=LEDGER_KEY, experiment_enabled=True)
+        receipt = verify_write_receipt(ledger.apply(intent, CONTENT), intent, key=LEDGER_KEY)
+        assert receipt.result_revision == 1
+        assert witness_path.read_bytes() == witness_after_drain
+        with sqlite3.connect(witness_path) as db:
+            assert db.execute('SELECT count(*) FROM reservations WHERE consumed=1').fetchone()[0] == 1
+            assert db.execute('SELECT count(*) FROM witness_events').fetchone()[0] == 2
+        with sqlite3.connect(control) as db:
+            assert db.execute('SELECT invocation_id, status FROM admission').fetchall() == [(invocation, 'unknown')]
+        with sqlite3.connect(ledger_path) as db:
+            assert db.execute('SELECT count(*) FROM records').fetchone()[0] == 1
+            assert db.execute('SELECT count(*) FROM attempts').fetchone()[0] == 1
+    finally:
+        server.close()
 
 
 @pytest.mark.parametrize('rollback', ['control', 'ledger', 'both'])
