@@ -81,6 +81,19 @@ if mode == 'reserve-consume':
         'ticket_mac':first['ticket_mac']}
     result=client.request(consume)
     print(json.dumps({'first':first,'retry':retry,'consumed':result},sort_keys=True))
+elif mode == 'reserve-only':
+    request={'operation':'reserve','request_id':invocation,'ledger_id':ledger,
+        'invocation_id':invocation,'intent_sha256':digest}
+    print(json.dumps(client.request(request),sort_keys=True))
+elif mode == 'consume-ticket':
+    ticket=json.load(open(config['ticket_path']))
+    consume={'operation':'consume',**{key:ticket[key] for key in
+        ('request_id','ledger_id','invocation_id','intent_sha256','generation','state_key_id','nonce')},
+        'ticket_mac':ticket['ticket_mac']}
+    try:
+        print(client.request(consume)['status'])
+    except WitnessTransportDenied:
+        print('denied')
 elif mode == 'retry-consumed':
     request={'operation':'reserve','request_id':invocation,'ledger_id':ledger,
         'invocation_id':invocation,'intent_sha256':digest}
@@ -193,6 +206,88 @@ def test_separate_server_and_client_processes_authenticate_and_recover(tmp_path)
         assert retired.stdout.strip() == 'denied'
     finally:
         stop_server(restarted)
+
+
+@pytest.mark.skipif(not hasattr(__import__('socket'), 'SO_PEERCRED'),
+    reason='local peer credential transport requires Linux SO_PEERCRED')
+def test_state_key_rotation_survives_server_restart_and_fails_closed_during_retirement(tmp_path):
+    socket_dir = tmp_path/'private-socket'
+    socket_dir.mkdir(mode=0o700)
+    state_dir = tmp_path/'witness-state'
+    state_dir.mkdir(mode=0o700)
+    state_path = state_dir/'witness.sqlite3'
+    DurableLocalRecoveryWitness(state_path,
+        caller_keys={CALLER: CALLER_KEY}, state_key=STATE_KEY, initialize=True)
+    config = {'socket_path':str(socket_dir/'witness.sock'),
+        'state_path':str(state_path), 'caller_keys':{CALLER:CALLER_KEY.hex()},
+        'state_key':STATE_KEY.hex()}
+    config_path = tmp_path/'server-config.json'
+    client_config_path = tmp_path/'client-config.json'
+    ticket_path = tmp_path/'pending-ticket.json'
+    client_config = {'socket_path':config['socket_path'], 'ticket_path':str(ticket_path)}
+    config_path.write_text(json.dumps(config))
+    config_path.chmod(0o600)
+    client_config_path.write_text(json.dumps(client_config))
+    client_config_path.chmod(0o600)
+    args = [sys.executable, '-c', client_program(), str(client_config_path)]
+    client_env = dict(os.environ)
+    client_env['PYTHONPATH'] = str(Path(transport_module.__file__).parent) + os.pathsep + client_env.get('PYTHONPATH', '')
+    invocation, ledger, digest = str(uuid4()), str(uuid4()), 'e'*64
+    server = start_server(config_path)
+    try:
+        reserve = subprocess.run(args+[invocation,ledger,digest,'reserve-only'],
+            capture_output=True,text=True,env=client_env,timeout=10)
+        assert reserve.returncode == 0, reserve.stderr
+        ticket = json.loads(reserve.stdout)
+        assert ticket['state_key_id'] == 'state-v1'
+        ticket_path.write_text(json.dumps(ticket))
+        ticket_path.chmod(0o600)
+    finally:
+        stop_server(server)
+
+    new_state_key = b'z'*32
+    config.pop('state_key')
+    config['state_keys'] = {'state-v2':new_state_key.hex()}
+    config['current_state_key_id'] = 'state-v2'
+    config_path.write_text(json.dumps(config))
+    config_path.chmod(0o600)
+    retired_too_early = start_server(config_path)
+    try:
+        consume = subprocess.run(args+[invocation,ledger,digest,'consume-ticket'],
+            capture_output=True,text=True,env=client_env,timeout=10)
+        assert consume.returncode == 0, consume.stderr
+        assert consume.stdout.strip() == 'denied'
+    finally:
+        stop_server(retired_too_early)
+
+    config['state_keys'] = {'state-v1':STATE_KEY.hex(), 'state-v2':new_state_key.hex()}
+    config_path.write_text(json.dumps(config))
+    config_path.chmod(0o600)
+    overlap = start_server(config_path)
+    try:
+        new_invocation, new_ledger = str(uuid4()), str(uuid4())
+        new_reserve = subprocess.run(args+[new_invocation,new_ledger,digest,'reserve-only'],
+            capture_output=True,text=True,env=client_env,timeout=10)
+        assert new_reserve.returncode == 0, new_reserve.stderr
+        assert json.loads(new_reserve.stdout)['state_key_id'] == 'state-v2'
+        consume = subprocess.run(args+[invocation,ledger,digest,'consume-ticket'],
+            capture_output=True,text=True,env=client_env,timeout=10)
+        assert consume.returncode == 0, consume.stderr
+        assert consume.stdout.strip() == 'spent'
+    finally:
+        stop_server(overlap)
+
+    config['state_keys'] = {'state-v2':new_state_key.hex()}
+    config_path.write_text(json.dumps(config))
+    config_path.chmod(0o600)
+    retired_after_consume = start_server(config_path)
+    try:
+        retry = subprocess.run(args+[invocation,ledger,digest,'retry-consumed'],
+            capture_output=True,text=True,env=client_env,timeout=10)
+        assert retry.returncode == 0, retry.stderr
+        assert retry.stdout.strip() == 'denied'
+    finally:
+        stop_server(retired_after_consume)
 
 
 def test_server_rejects_non_private_socket_directory(tmp_path):
