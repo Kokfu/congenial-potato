@@ -59,6 +59,28 @@ class RecoveryWitnessTests(unittest.TestCase):
         with self.assertRaisesRegex(RecoveryWitnessDenied, 'unavailable'):
             consume(witness, permit)
 
+    def test_lost_issue_reply_can_retry_before_identity_is_consumed(self):
+        witness = SimulatedMonotonicRecoveryWitness(KEY)
+        lost = ticket(witness)  # response is lost before any consume request
+        retry = ticket(witness)
+        self.assertEqual(retry, lost)  # idempotent reservation identity
+        self.assertTrue(consume(witness, retry))
+
+    def test_lost_consume_reply_keeps_identity_unknown_and_denies_new_ticket(self):
+        witness = SimulatedMonotonicRecoveryWitness(KEY)
+        permit = ticket(witness)
+        witness.consume(permit, ledger_id=LEDGER, invocation_id=INVOCATION,
+            intent_sha256=INTENT)  # response is lost; caller cannot infer no effect
+        with self.assertRaisesRegex(RecoveryWitnessDenied, 'already consumed'):
+            consume(witness, ticket(witness))
+
+    def test_simulator_restart_erases_state_and_reopens_identity(self):
+        first = SimulatedMonotonicRecoveryWitness(KEY)
+        consume(first, ticket(first))
+        restarted = SimulatedMonotonicRecoveryWitness(KEY)
+        # Demonstrates why this process-local object cannot be the external anchor.
+        self.assertTrue(consume(restarted, ticket(restarted)))
+
     def test_concurrent_tickets_consume_one_invocation_once(self):
         witness = SimulatedMonotonicRecoveryWitness(KEY)
         permits = [ticket(witness), ticket(witness)]
