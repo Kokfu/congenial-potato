@@ -1,6 +1,6 @@
-# Local witness acceptance matrix: Phase 8.4bj
+# Local witness acceptance matrix: Phase 8.4bk
 
-Date: 2026-10-17. Branch: `phase-8-witness-auth-postgres-checkpoint`. Parent: draft PR [#133](https://github.com/Kokfu/congenial-potato/pull/133), commit `8534de30226ef74294ec6dd0c92175f4a298c135`.
+Date: 2026-10-17. Branch: `phase-8-witness-retired-key-empty-mac`. Parent: draft PR [#134](https://github.com/Kokfu/congenial-potato/pull/134), commit `784016e354d14cf2cb15c02c96209fad4019ebbb`.
 
 This is the current local synthetic checkpoint. The fixture protocol, same-host transport and fake-ledger drills do not constitute an independent recovery service or product activation. Expected rollback and caller-effect limitations are recorded separately below.
 
@@ -12,7 +12,7 @@ This is the current local synthetic checkpoint. The fixture protocol, same-host 
 
 The [fixed local checker](witness-local-check-command.md) tests the checkout directly, isolates pytest options/plugins/configuration, excludes PostgreSQL conftest loading and compiles selected files to a temporary directory. Dependency setup is documented with that command.
 
-The latest six-module local runtime check is Phase 8.4bi: **139 local cases passed in 5.63s**, **65 product Python files passed the static fixture-import guard**, and **15 files compiled**. Separately, Phase 8.4bd passed **6 PostgreSQL-backed witness restore-wrapper cases in 9.76s** (three direct and three Unix-RPC), after fresh application/workflow migrations; see [RPC cases and limits](witness-postgres-rpc-restore-validation.md) and [database setup](witness-postgres-restore-wrapper-validation.md). The local command was rerun after fixing missing-key/empty-MAC authentication; see [authentication fix](witness-missing-auth-key-denial-validation.md) and [guard coverage](witness-admission-import-guard-validation.md). Collection-only inspection verified the exact six-module, 139-case inventory; changed-document links plus `git diff --check` passed.
+The latest six-module local runtime check is Phase 8.4bk: **142 local cases passed in 6.29s**, **65 product Python files passed the static fixture-import guard**, and **15 files compiled**. Separately, Phase 8.4bd passed **6 PostgreSQL-backed witness restore-wrapper cases in 9.76s** (three direct and three Unix-RPC), after fresh application/workflow migrations; see [RPC cases and limits](witness-postgres-rpc-restore-validation.md) and [database setup](witness-postgres-restore-wrapper-validation.md). The local command was rerun after fixing missing-key/empty-MAC authentication; see [authentication fix](witness-missing-auth-key-denial-validation.md) and [guard coverage](witness-admission-import-guard-validation.md). Collection-only inspection verified the exact six-module, 142-case inventory; changed-document links plus `git diff --check` passed.
 
 Phase 8.4be additionally passed the **complete 34-case admission file in 55.79s**, including those six restore cases and migration safeguards; see [admission regression checkpoint](witness-admission-regression-checkpoint.md). These counts overlap and must not be added together.
 
@@ -26,17 +26,17 @@ Phase 8.4bj reran the default PostgreSQL command after the authentication fix: *
 | --- | ---: |
 | [Durable protocol](../../backend/tests/test_durable_local_recovery_witness.py) | 49 |
 | [Fake-ledger recovery](../../backend/tests/test_durable_witness_fake_ledger_recovery.py) | 13 |
-| [Local transport/process lifecycle](../../backend/tests/test_durable_local_witness_transport.py) | 43 |
+| [Local transport/process lifecycle](../../backend/tests/test_durable_local_witness_transport.py) | 46 |
 | [Pending-snapshot audit rollback](../../backend/tests/test_witness_pending_snapshot_audit_rollback.py) | 1 |
 | [Response parsing/binding/contracts](../../backend/tests/test_witness_rpc_response_validation.py) | 24 |
 | [In-memory protocol regressions](../../backend/tests/test_synthetic_write_recovery_witness.py) | 9 |
-| **Total** | **139** |
+| **Total** | **142** |
 
 ## Current fixture behavior and evidence
 
 | Area | What the local checks exercise | Evidence |
 | --- | --- | --- |
-| Authentication failure | Missing key plus empty MAC and malformed MACs deny before mutation; valid authenticated calls still succeed | [Missing-key fix](witness-missing-auth-key-denial-validation.md) |
+| Authentication failure | Missing key plus empty MAC and malformed MACs deny before mutation; valid authenticated calls still succeed | [Missing-key fix](witness-missing-auth-key-denial-validation.md), [retired-key process restart](witness-retired-key-empty-mac-validation.md) |
 | Reservation/consumption | Exact binding, idempotent reserve retry, one-way consume, retained-state restart and concurrent winner | [Durable protocol](durable-local-recovery-witness-validation.md) |
 | Generation/admin | Idempotent advance identity, stale-ticket denial, stable caller allowlist, typed unique admin configuration | [Advance retry](idempotent-witness-generation-advance-validation.md), [configuration](witness-server-config-validation.md) |
 | Identity/key encoding | Canonical named caller/key/request fields under v2 request MAC domains; old delimiter format rejected; invalid UTF-8 names denied before setup while valid Unicode/audit identities are retained | [Canonical identities](witness-canonical-auth-identities-validation.md), [Unicode names](witness-unicode-identities-validation.md) |
