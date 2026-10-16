@@ -30,7 +30,7 @@ Exact commands, earlier failed probes, final counts and their limits remain in t
 | Computation may have happened, result missing/rejected | Retain consumed unknown admission. Do not rerun, infer non-execution, invent a receipt or promote context. Authority mutations and journal replacement are tested. |
 | Accepted result commit, response lost | Return the exact authenticated historical record; no new job, row or accepted event. Actual postcommit process exit and fresh-interpreter replay are tested. |
 | Exact replay after expiry/revision | Read historical fixture metadata only. Private capability/key and exact stored identity remain required; this is no execution permit. |
-| Private capability or host result key lost | No recovery/rotation/reissuance mechanism is implemented. Possession of DB hashes alone cannot authenticate delivery. Keep consumed admission; no automatic replay of the job. |
+| Private capability or host result key lost | Fresh-interpreter missing/wrong identity tests preserve unknown and accepted history; retained original identity only accepts/replays metadata. No recovery/rotation/reissuance mechanism is implemented. DB hashes alone cannot authenticate delivery. [Recovery regressions](runner-result-recovery-validation.md). |
 | Stale DB plus journal/key restore | May erase admission/unknown/result history. Existing process-crash tests do not establish safe restore. Keep product activation closed pending a quiesced recovery/epoch/key policy and independent acceptance. |
 | Physical power loss or hostile host/kernel/key holder | Not verified. Local DB commit/process-exit evidence and HMAC cannot establish these guarantees. |
 
@@ -46,6 +46,8 @@ Before product execution, independently verify trusted runner identity, protecte
 
 This slice changes documentation only. AST inspection of the three product modules found no imports of runner admission/job/result acceptance; registry introspection confirmed all seven installed adapters inherit `FakeAdapter`. Source inspection confirmed the explicit runner-action dispatcher guard and no result consumption outside its fixture service/model/contract. `docker compose config --services` returned only db/migrate/api/web/worker. All **95 local links** across modified documents resolved, and `git diff --check` passed. The parent full backend, Docker-enabled runner, migration/image and clean Compose checks above were not rerun for this documentation slice.
 
-## Next bounded task
+## Recovery follow-up and next bounded task
 
-Add isolated synthetic recovery regressions for result loss before commit and lost/wrong host keys across fresh interpreters. Prove that a rolled-back acceptance leaves consumed admission unknown, that unavailable authentication cannot promote metadata or authorize another job, and that a retained exact envelope/key can only replay the original accepted history. Keep recovery simulation distinct from physical power-loss or stale-restore acceptance. Synthetic external-write receipts/reconciliation follow separately; general shell/browser execution and production integration stay deferred.
+The [synthetic recovery follow-up](runner-result-recovery-validation.md) now verifies actual process exit after accepted-state SQL flush but before commit, and missing/wrong private identity across fresh interpreters. Rollback preserves consumed unknown admission and no result/events; retained original identity only accepts/replays the original metadata. Its exact counts and limits remain separate from the parent full suite.
+
+Next define an inert synthetic external-write receipt/reconciliation contract with exact approved effect identity and explicit unknown outcomes. Keep any later fake-ledger integration isolated; general shell/browser execution, real writes and production integration stay deferred.
