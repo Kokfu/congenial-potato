@@ -4,6 +4,8 @@ Date: 2026-10-16. Branch: `phase-8-local-witness-transport`. Parent: durable wit
 
 ## Local transport
 
+Phase 8.4ar follow-up: the [socket liveness guard](witness-socket-liveness-guard-validation.md) refuses to unlink active endpoints, fails closed when probing is inconclusive and preserves an observed replacement inode. Process fixtures now wait for an authenticated reply without preemptively removing the path. These are non-atomic local checks, not an independent ownership or locking guarantee.
+
 Phase 8.4an follow-up: [exchange freshness](witness-rpc-exchange-freshness-validation.md) adds a required authenticated per-exchange nonce to local RPC frames. A captured reply to an identical earlier request no longer matches the current client's outbound MAC; no durable nonce cache, remote transport or anti-rollback storage is added.
 
 Phase 8.4am follow-up: [response/request binding](witness-rpc-response-binding-validation.md) replaces the test-only v1 response envelope with v2, authenticating the exact request MAC and requiring the client to compare it. The original Phase 8.4c behavior and results below are historical; response freshness for identical requests remains a separate gap.
