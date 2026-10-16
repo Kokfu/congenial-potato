@@ -111,6 +111,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 103. [Caller-key process race at fake-ledger boundary](research/witness-key-rotation-process-effect-race-validation.md)
 104. [State-key process rotation at fake-ledger boundary](research/witness-state-rotation-process-effect-validation.md)
 105. [Witness generation rollback boundary](research/witness-generation-rollback-boundary-validation.md)
+106. [Coordinated witness and effect-state rollback](research/witness-coordinated-full-rollback-effect-validation.md)
 
 ## Architecture
 

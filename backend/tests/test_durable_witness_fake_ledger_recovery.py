@@ -108,6 +108,49 @@ def test_durable_witness_blocks_actual_fake_ledger_after_fixture_restore(tmp_pat
         assert db.execute('SELECT count(*) FROM attempts').fetchone()[0] == expected
 
 
+def test_coordinated_witness_control_and_ledger_rollback_reopens_fake_effect(tmp_path, monkeypatch):
+    """The local protocol cannot prevent replay after every fixture is rolled back."""
+    intent, control, ledger_dir, ledger_path, snapshots, witness_path, witness = setup(tmp_path)
+    snapshots.mkdir(exist_ok=True)
+    witness_before = snapshots/'witness-before.sqlite3'
+    shutil.copy2(witness_path, witness_before)
+
+    applied = []
+    original_apply = SyntheticWriteLedger.apply
+
+    def counted_apply(self, current_intent, content):
+        receipt = original_apply(self, current_intent, content)
+        applied.append(receipt)
+        return receipt
+
+    monkeypatch.setattr(SyntheticWriteLedger, 'apply', counted_apply)
+    first = verify_write_receipt(apply_through_fixture(witness, intent, control,
+        ledger_dir), intent, key=LEDGER_KEY)
+    assert first.result_revision == 1
+
+    # A coordinated restore erases both effect-side state and the witness consume.
+    shutil.copy2(snapshots/'control.sqlite3', control)
+    shutil.copy2(snapshots/'ledger.sqlite3', ledger_path)
+    shutil.copy2(witness_before, witness_path)
+    rolled_back_witness = DurableLocalRecoveryWitness(witness_path,
+        caller_keys={CALLER: CALLER_KEY}, state_key=STATE_KEY)
+    second = verify_write_receipt(apply_through_fixture(rolled_back_witness,
+        intent, control, ledger_dir), intent, key=LEDGER_KEY)
+
+    assert second.intent_sha256 == first.intent_sha256 == intent_digest(intent)
+    assert second.event_id != first.event_id
+    assert second.result_revision == first.result_revision == 1
+    assert second.content_sha256 == first.content_sha256
+    assert len(applied) == 2
+    with sqlite3.connect(witness_path) as db:
+        assert db.execute('SELECT count(*) FROM reservations WHERE consumed=1').fetchone()[0] == 1
+    with sqlite3.connect(control) as db:
+        assert db.execute('SELECT count(*) FROM admission').fetchone()[0] == 1
+    with sqlite3.connect(ledger_path) as db:
+        assert db.execute('SELECT count(*) FROM records').fetchone()[0] == 1
+        assert db.execute('SELECT count(*) FROM attempts').fetchone()[0] == 1
+
+
 def test_lost_consume_reply_burns_invocation_before_control_or_fake_ledger(tmp_path):
     intent, control, ledger_dir, ledger_path, _, witness_path, witness = setup(tmp_path)
     invocation = str(intent.scope.invocation_id)
