@@ -58,6 +58,8 @@ Back up both application/workflow databases, artifact bytes and protected local 
 
 Experimental broker attempts introduce a separate recovery boundary: restoring stale control DB plus broker key/journal copies may erase unknown external outcomes. No broker is deployed here, and the existing fixture backup procedure is not production broker recovery evidence. Quiescence, ticket invalidation/key lifecycle and external reconciliation must be verified before product reads.
 
+Runner fixtures add the same recovery constraint: stale application DB restoration can erase consumed admission or accepted-result history even if a host journal/key survives. No runner service, Docker socket or result key is configured in Compose. Current process-exit/replay tests do not validate runner key rotation or restore; product runner execution stays closed. See [runner fixture acceptance](../research/governed-runner-acceptance.md).
+
 Drain incompatible updates; retain old workflow code for active runs.
 
 ## Portability

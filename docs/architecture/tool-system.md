@@ -49,3 +49,9 @@ Web read/search follows SSRF/output controls. Filesystem means artifact service,
 Bound bytes/tokens/MIME. Large output becomes artifact plus excerpt/ref. Sanitize rendered content. Returned URLs require validation before fetch.
 
 Plugin code is trusted deployed software; plugin interfaces are not sandboxes. Human-reviewed installation remains required.
+
+## Current governed runner fixture
+
+The fixed synthetic digest job has owner-pinned grants, inert typed proposals and exact staged approvals. Only a trusted test bridge explicitly invokes independent committed admission, the pinned no-network container and durable authenticated metadata acceptance. The ordinary product dispatcher skips `project.runner.digest`, and product API/worker code imports no runner execution service. No arbitrary code/shell/browser, Docker socket, runner transport or result-to-context promotion is enabled.
+
+Consumed admission remains unknown when execution or result delivery is uncertain. Exact accepted duplicates return historical metadata without another job or accepted event; expiry/revocation never turns this into fresh permission. Host-key authentication establishes no external truth. See the [fixture acceptance matrix and closed product gate](../research/governed-runner-acceptance.md).
