@@ -193,7 +193,8 @@ def serve_config(path):
     config = json.loads(config_path.read_text())
     witness = DurableLocalRecoveryWitness(config['state_path'],
         caller_keys={name: bytes.fromhex(value) for name, value in config['caller_keys'].items()},
-        state_key=bytes.fromhex(config['state_key']))
+        state_key=bytes.fromhex(config['state_key']),
+        advance_callers=frozenset(config.get('advance_callers', [])))
     server = LocalWitnessUnixServer(witness, config['socket_path']).start()
     try:
         while True:

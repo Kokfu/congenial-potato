@@ -93,6 +93,13 @@ elif mode == 'wrong-key':
         print('denied')
     else:
         raise AssertionError('wrong caller key was accepted')
+elif mode == 'advance-denied':
+    try:
+        client.request({'operation':'advance','request_id':invocation})
+    except WitnessTransportDenied:
+        print('denied')
+    else:
+        raise AssertionError('caller without recovery-admin role advanced generation')
 '''
 
 
@@ -131,6 +138,10 @@ def test_separate_server_and_client_processes_authenticate_and_recover(tmp_path)
             text=True, env=client_env, timeout=10)
         assert wrong_key.returncode == 0, wrong_key.stderr
         assert wrong_key.stdout.strip() == 'denied'
+        advance = subprocess.run(args+['advance-denied'], capture_output=True,
+            text=True, env=client_env, timeout=10)
+        assert advance.returncode == 0, advance.stderr
+        assert advance.stdout.strip() == 'denied'
     finally:
         stop_server(server)
 

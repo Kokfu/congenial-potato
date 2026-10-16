@@ -67,14 +67,17 @@ class DurableLocalRecoveryWitness:
     """SQLite-backed protocol fixture with caller authentication and atomic state."""
 
     def __init__(self, path, *, caller_keys: dict[str, bytes], state_key: bytes,
-                 initialize=False):
+                 advance_callers=frozenset(), initialize=False):
         self.path = Path(path)
         if (not isinstance(caller_keys, dict) or not caller_keys or
                 any(type(name) is not str or not name or type(key) is not bytes or len(key) != 32
                     for name, key in caller_keys.items()) or
-                type(state_key) is not bytes or len(state_key) != 32):
+                type(state_key) is not bytes or len(state_key) != 32 or
+                not isinstance(advance_callers, (set, frozenset)) or
+                any(type(name) is not str or name not in caller_keys for name in advance_callers)):
             raise WitnessDenied('witness key configuration unavailable')
         self._caller_keys = dict(caller_keys)
+        self._advance_callers = frozenset(advance_callers)
         self._state_key = state_key
         self._available = True
         if initialize:
@@ -266,6 +269,8 @@ class DurableLocalRecoveryWitness:
 
     def advance_generation(self, *, caller_id, request, mac):
         key = self._authenticate(caller_id, request, mac)
+        if caller_id not in self._advance_callers:
+            raise WitnessDenied('witness recovery administrator unavailable')
         if (type(request) is not dict or set(request) != {'operation','request_id'} or
                 request.get('operation') != 'advance'):
             raise WitnessDenied('witness request unavailable')
