@@ -978,3 +978,46 @@ def test_failed_handler_thread_start_releases_connection_capacity(tmp_path, monk
             client.request({'operation': 'generation'})
         assert client.request({'operation': 'generation'})['generation'] == 1
     assert witness.path.read_bytes() == before
+
+
+def test_request_completed_after_server_close_does_not_create_a_reservation(tmp_path, monkeypatch):
+    entered, finished = threading.Event(), threading.Event()
+    original_handle = LocalWitnessUnixServer._handle
+
+    def observed_handle(self, connection):
+        entered.set()
+        try:
+            original_handle(self, connection)
+        finally:
+            finished.set()
+
+    monkeypatch.setattr(LocalWitnessUnixServer, '_handle', observed_handle)
+    directory = tmp_path/'private'
+    directory.mkdir(mode=0o700)
+    path = directory/'witness.sock'
+    witness = DurableLocalRecoveryWitness(tmp_path/'state.sqlite3',
+        caller_keys={CALLER: CALLER_KEY}, state_key=STATE_KEY, initialize=True)
+    request = {'operation': 'reserve', 'request_id': str(uuid4()),
+        'ledger_id': str(uuid4()), 'invocation_id': str(uuid4()),
+        'intent_sha256': 'a' * 64}
+    nonce = str(uuid4())
+    frame = {'caller_id': CALLER, 'caller_key_id': 'caller-v1', 'request': request,
+        'exchange_nonce': nonce,
+        'mac': request_mac(CALLER_KEY, CALLER, request, exchange_nonce=nonce)}
+    payload = json.dumps(frame).encode('ascii') + b'\n'
+    before = witness.path.read_bytes()
+    server = LocalWitnessUnixServer(witness, path).start()
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            connection.settimeout(2)
+            connection.connect(str(path))
+            connection.sendall(payload[:1])
+            assert entered.wait(timeout=2), 'connection was not accepted before close'
+            server.close()
+            assert not path.exists()
+            connection.sendall(payload[1:])
+            assert json.loads(transport_module._read_frame(connection)) == {'error': 'denied'}
+            assert finished.wait(timeout=2), 'handler did not finish after denial'
+    finally:
+        server.close()
+    assert witness.path.read_bytes() == before
