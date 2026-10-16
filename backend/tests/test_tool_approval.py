@@ -11,8 +11,8 @@ from workforce.models import Approval, ArtifactVersion, ToolInvocation, now
 from test_tool_gateway import fixture_run, headers
 
 
-def proposed_write(authenticated):
-    artifact_id = str(uuid4())
+def proposed_write(authenticated, *, artifact_id=None):
+    artifact_id = artifact_id or str(uuid4())
     output = json.dumps({'version': 1, 'action': 'project.artifact.write',
                          'arguments': {'project_id': 'PROJECT_ID',
                                        'artifact_id': artifact_id,

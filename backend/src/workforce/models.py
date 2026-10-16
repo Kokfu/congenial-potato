@@ -585,3 +585,38 @@ class RunnerResult(Base):
     payload: Mapped[dict] = mapped_column(JSON)
     trust_origin: Mapped[str] = mapped_column(String(30), default='synthetic_runner')
     accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class SyntheticWriteLedgerControl(Base):
+    """One fixture ledger identity, pinned independently in the control DB."""
+    __tablename__ = 'synthetic_write_ledger_control'
+    __table_args__ = (CheckConstraint('id = 1', name='ck_synthetic_write_ledger_control_singleton'),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ledger_id: Mapped[str] = mapped_column(String(36), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class SyntheticWriteAdmission(Base):
+    """Presence consumes one approved synthetic record revision forever."""
+    __tablename__ = 'synthetic_write_admissions'
+    __table_args__ = (
+        CheckConstraint("status = 'unknown'", name='ck_synthetic_write_admission_status'),
+        CheckConstraint('expected_revision BETWEEN 0 AND 2147483646',
+                        name='ck_synthetic_write_expected_revision'),
+        UniqueConstraint('ledger_id', 'record_id', 'expected_revision',
+                         name='uq_synthetic_write_target_revision'),
+    )
+    invocation_id: Mapped[str] = mapped_column(ForeignKey('tool_invocations.id'), primary_key=True)
+    approval_id: Mapped[str] = mapped_column(ForeignKey('approvals.id'))
+    ledger_id: Mapped[str] = mapped_column(ForeignKey('synthetic_write_ledger_control.ledger_id'))
+    record_id: Mapped[str] = mapped_column(String(36))
+    expected_revision: Mapped[int] = mapped_column(Integer)
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'))
+    agent_id: Mapped[str] = mapped_column(ForeignKey('agents.id'))
+    root_id: Mapped[str] = mapped_column(ForeignKey('executions.id'))
+    approval_payload_sha256: Mapped[str] = mapped_column(String(64))
+    policy_snapshot_sha256: Mapped[str] = mapped_column(String(64))
+    intent_sha256: Mapped[str] = mapped_column(String(64))
+    capability_sha256: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(20), default='unknown')
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
