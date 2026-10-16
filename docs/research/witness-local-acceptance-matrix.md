@@ -15,7 +15,7 @@ This checkpoint reruns the durable protocol, fake-ledger restore drills, and loc
 
 ## Validation commands and results
 
-Current follow-up command (Phase 8.4ao): [the local witness checker](witness-local-check-command.md) runs the current checkout directly with a fixed six-module list and excludes PostgreSQL conftest loading. It passed **67 cases** and compiled **15 files**. The copy-based commands and Phase 8.4ai results below remain historical evidence.
+Current follow-up command (Phase 8.4ao): [the local witness checker](witness-local-check-command.md) runs the current checkout directly with a fixed six-module list and excludes PostgreSQL conftest loading. The Phase 8.4ap run passed **80 cases** and compiled **15 files**, including the [typed recovery-admin configuration regressions](witness-server-config-validation.md). The copy-based commands and Phase 8.4ai results below remain historical evidence.
 
 The pytest files are copied outside `backend/tests` so the repository-wide `conftest.py` does not require PostgreSQL for these local-only suites.
 

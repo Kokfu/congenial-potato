@@ -227,6 +227,11 @@ def serve_config(path):
         expected |= ({'state_keys', 'current_state_key_id'} if state_ring else {'state_key'})
         if set(config) - {'advance_callers'} != expected - {'advance_callers'}:
             raise WitnessTransportDenied('witness config fields unavailable')
+        advance_callers = config.get('advance_callers', [])
+        if (type(advance_callers) is not list or
+                any(type(caller) is not str or not caller for caller in advance_callers) or
+                len(set(advance_callers)) != len(advance_callers)):
+            raise WitnessTransportDenied('witness recovery-admin config unavailable')
         if caller_ring:
             caller_keys = {name: {key_id: bytes.fromhex(value) for key_id, value in keys.items()}
                            for name, keys in config['caller_keyrings'].items()}
@@ -237,7 +242,7 @@ def serve_config(path):
         witness_config = {
             'caller_keys': caller_keys,
             'current_caller_key_ids': current_caller_key_ids,
-            'advance_callers': frozenset(config.get('advance_callers', [])),
+            'advance_callers': frozenset(advance_callers),
         }
         if state_ring:
             witness_config['state_keys'] = {name: bytes.fromhex(value)

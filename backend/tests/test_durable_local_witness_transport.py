@@ -14,7 +14,7 @@ from uuid import uuid4
 import pytest
 
 from durable_local_recovery_witness import (DurableLocalRecoveryWitness,
-    request_mac)
+    WitnessDenied, request_mac)
 from synthetic_write_ledger import SyntheticWriteLedger
 import durable_local_witness_transport as transport_module
 from durable_local_witness_transport import (LocalWitnessUnixServer,
@@ -637,6 +637,72 @@ def test_server_config_rejects_duplicate_and_unexpected_fields(tmp_path):
     config_path.chmod(0o600)
     with pytest.raises(WitnessTransportDenied, match='config fields unavailable'):
         transport_module.serve_config(config_path)
+
+
+@pytest.mark.parametrize('allowlist', [
+    'ab', {'a': True, 'b': False}, None, True, 1,
+    [1], [''], ['a', 'a'], ['unknown'],
+])
+def test_server_config_rejects_malformed_admin_allowlist_before_server_start(tmp_path, monkeypatch, allowlist):
+    state = tmp_path/'state.sqlite3'
+    DurableLocalRecoveryWitness(state, caller_keys={'a': b'a'*32, 'b': b'b'*32},
+        state_key=STATE_KEY, initialize=True)
+    config = {'socket_path': str(tmp_path/'witness.sock'), 'state_path': str(state),
+        'caller_keys': {'a': (b'a'*32).hex(), 'b': (b'b'*32).hex()},
+        'state_key': STATE_KEY.hex(), 'advance_callers': allowlist}
+    path = tmp_path/'config.json'
+    path.write_text(json.dumps(config))
+    path.chmod(0o600)
+    before = state.read_bytes()
+
+    def unexpected_server(*args, **kwargs):
+        pytest.fail('malformed recovery-admin config reached server construction')
+
+    monkeypatch.setattr(transport_module, 'LocalWitnessUnixServer', unexpected_server)
+    with pytest.raises(WitnessTransportDenied):
+        transport_module.serve_config(path)
+    assert state.read_bytes() == before
+    assert not (tmp_path/'witness.sock').exists()
+
+
+@pytest.mark.parametrize('allowlist', [None, [], ['a'], ['a', 'b']])
+def test_server_config_admin_allowlist_preserves_explicit_caller_membership(tmp_path, monkeypatch, allowlist):
+    state = tmp_path/'state.sqlite3'
+    keys = {'a': b'a'*32, 'b': b'b'*32}
+    DurableLocalRecoveryWitness(state, caller_keys=keys, state_key=STATE_KEY, initialize=True)
+    config = {'socket_path': str(tmp_path/'witness.sock'), 'state_path': str(state),
+        'caller_keys': {caller: key.hex() for caller, key in keys.items()},
+        'state_key': STATE_KEY.hex()}
+    if allowlist is not None:
+        config['advance_callers'] = allowlist
+    path = tmp_path/'config.json'
+    path.write_text(json.dumps(config))
+    path.chmod(0o600)
+    loaded = []
+
+    class ConfigLoaded(Exception):
+        pass
+
+    def capture(witness, socket_path):
+        loaded.append(witness)
+        raise ConfigLoaded
+
+    monkeypatch.setattr(transport_module, 'LocalWitnessUnixServer', capture)
+    with pytest.raises(ConfigLoaded):
+        transport_module.serve_config(path)
+    for caller, key in keys.items():
+        request = {'operation': 'advance', 'request_id': str(uuid4())}
+        if caller in (allowlist or []):
+            reply = loaded[0].advance_generation(caller_id=caller, request=request,
+                mac=request_mac(key, caller, request))
+            assert reply['body']['status'] == 'advanced'
+        else:
+            with pytest.raises(WitnessDenied, match='recovery administrator'):
+                loaded[0].advance_generation(caller_id=caller, request=request,
+                    mac=request_mac(key, caller, request))
+    with sqlite3.connect(state) as db:
+        assert db.execute('SELECT generation FROM witness_state').fetchone()[0] == 1 + len(allowlist or [])
+        assert [row[0] for row in db.execute('SELECT caller_id FROM witness_events ORDER BY sequence')] == (allowlist or [])
 
 
 @pytest.mark.skipif(not hasattr(socket, 'SO_PEERCRED'),
