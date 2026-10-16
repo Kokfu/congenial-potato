@@ -109,6 +109,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 101. [Lost consume reply effect-boundary drill](research/witness-lost-reply-effect-boundary-validation.md)
 102. [Process race and coordinated restore drill](research/witness-process-rollback-recovery-validation.md)
 103. [Caller-key process race at fake-ledger boundary](research/witness-key-rotation-process-effect-race-validation.md)
+104. [State-key process rotation at fake-ledger boundary](research/witness-state-rotation-process-effect-validation.md)
 
 ## Architecture
 
