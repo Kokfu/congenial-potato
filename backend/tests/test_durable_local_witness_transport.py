@@ -63,7 +63,12 @@ from durable_local_witness_transport import UnixWitnessClient
 from durable_local_recovery_witness import WitnessDenied
 from durable_local_witness_transport import WitnessTransportDenied
 config=json.load(open(sys.argv[1]))
-client=UnixWitnessClient(config['socket_path'], caller_id='socket-fixture-caller', key=b'u'*32)
+if 'client_keyrings' in config:
+    keys={key_id:bytes.fromhex(value) for key_id,value in config['client_keyrings'].items()}
+    client=UnixWitnessClient(config['socket_path'], caller_id='socket-fixture-caller',
+        keys=keys, current_key_id=config['client_key_id'])
+else:
+    client=UnixWitnessClient(config['socket_path'], caller_id='socket-fixture-caller', key=b'u'*32)
 invocation, ledger, digest, mode=sys.argv[2:]
 if mode == 'reserve-consume':
     request={'operation':'reserve','request_id':invocation,'ledger_id':ledger,
@@ -93,6 +98,15 @@ elif mode == 'wrong-key':
         print('denied')
     else:
         raise AssertionError('wrong caller key was accepted')
+elif mode == 'old-key':
+    client=UnixWitnessClient(config['socket_path'], caller_id='socket-fixture-caller',
+        key=bytes.fromhex(config['client_keyrings']['caller-v1']))
+    try:
+        client.request({'operation':'generation'})
+    except WitnessTransportDenied:
+        print('denied')
+    else:
+        print('accepted')
 elif mode == 'advance-denied':
     try:
         client.request({'operation':'advance','request_id':invocation})
@@ -113,9 +127,13 @@ def test_separate_server_and_client_processes_authenticate_and_recover(tmp_path)
     state_path = state_dir/'witness.sqlite3'
     DurableLocalRecoveryWitness(state_path,
         caller_keys={CALLER: CALLER_KEY}, state_key=STATE_KEY, initialize=True)
+    old_key, new_key = CALLER_KEY, b'n'*32
     config = {'socket_path': str(socket_dir/'witness.sock'),
-        'state_path': str(state_path), 'caller_keys': {CALLER: CALLER_KEY.hex()},
-        'state_key': STATE_KEY.hex()}
+        'state_path': str(state_path),
+        'caller_keyrings': {CALLER: {'caller-v1': old_key.hex(), 'caller-v2': new_key.hex()}},
+        'current_caller_key_ids': {CALLER: 'caller-v2'},
+        'client_keyrings': {'caller-v1': old_key.hex(), 'caller-v2': new_key.hex()},
+        'client_key_id': 'caller-v2', 'state_key': STATE_KEY.hex()}
     config_path = tmp_path/'server-config.json'
     config_path.write_text(json.dumps(config))
     config_path.chmod(0o600)
@@ -134,6 +152,10 @@ def test_separate_server_and_client_processes_authenticate_and_recover(tmp_path)
         first_result = json.loads(first.stdout)
         assert first_result['first'] == first_result['retry']
         assert first_result['consumed']['status'] == 'spent'
+        overlap = subprocess.run(args+['old-key'], capture_output=True,
+            text=True, env=client_env, timeout=10)
+        assert overlap.returncode == 0, overlap.stderr
+        assert overlap.stdout.strip() == 'accepted'
         wrong_key = subprocess.run(args+['wrong-key'], capture_output=True,
             text=True, env=client_env, timeout=10)
         assert wrong_key.returncode == 0, wrong_key.stderr
@@ -150,12 +172,20 @@ def test_separate_server_and_client_processes_authenticate_and_recover(tmp_path)
     with pytest.raises(WitnessTransportDenied, match='unavailable'):
         unavailable.request({'operation':'generation'})
 
+    config['caller_keyrings'] = {CALLER: {'caller-v2': new_key.hex()}}
+    config['current_caller_key_ids'] = {CALLER: 'caller-v2'}
+    config_path.write_text(json.dumps(config))
+    config_path.chmod(0o600)
     restarted = start_server(config_path)
     try:
         retry = subprocess.run(args+['retry-consumed'], capture_output=True,
             text=True, env=client_env, timeout=10)
         assert retry.returncode == 0, retry.stderr
         assert retry.stdout.strip() == 'denied'
+        retired = subprocess.run(args+['old-key'], capture_output=True,
+            text=True, env=client_env, timeout=10)
+        assert retired.returncode == 0, retired.stderr
+        assert retired.stdout.strip() == 'denied'
     finally:
         stop_server(restarted)
 
