@@ -190,3 +190,30 @@ def test_consolidated_rollback_restart_overlap_and_lost_consume_reply(tmp_path):
         assert db.execute("SELECT count(*) FROM witness_events WHERE event='reserved'").fetchone()[0] == 1
         assert db.execute("SELECT count(*) FROM witness_events WHERE event='consumed'").fetchone()[0] == 1
 
+
+def test_witness_outage_blocks_fake_ledger_and_restored_state_stays_spent(tmp_path):
+    intent, control, ledger_dir, ledger_path, _, witness_path, witness = setup(tmp_path)
+    reserve_and_consume(witness, intent)
+    unavailable_path = witness_path.with_suffix('.unavailable')
+    witness_path.rename(unavailable_path)
+
+    with pytest.raises(WitnessDenied, match='state unavailable'):
+        apply_through_fixture(witness, intent, control, ledger_dir)
+    with sqlite3.connect(control) as db:
+        assert db.execute('SELECT count(*) FROM admission').fetchone()[0] == 0
+    with sqlite3.connect(ledger_path) as db:
+        assert db.execute('SELECT count(*) FROM records').fetchone()[0] == 0
+        assert db.execute('SELECT count(*) FROM attempts').fetchone()[0] == 0
+
+    # A missing-state startup does not bootstrap a replacement witness database.
+    with pytest.raises(WitnessDenied, match='state unavailable'):
+        DurableLocalRecoveryWitness(witness_path,
+            caller_keys={CALLER: CALLER_KEY}, state_key=STATE_KEY)
+    unavailable_path.rename(witness_path)
+    restored = DurableLocalRecoveryWitness(witness_path,
+        caller_keys={CALLER: CALLER_KEY}, state_key=STATE_KEY)
+    with pytest.raises(WitnessDenied, match='consumed'):
+        apply_through_fixture(restored, intent, control, ledger_dir)
+    with sqlite3.connect(witness_path) as db:
+        assert db.execute('SELECT count(*) FROM reservations WHERE consumed=1').fetchone()[0] == 1
+

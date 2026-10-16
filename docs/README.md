@@ -98,6 +98,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 90. [Local witness RPC JSON validation](research/witness-rpc-json-validation.md)
 91. [Local witness oversized frame](research/witness-oversize-frame-validation.md)
 92. [Consolidated local witness recovery drill](research/witness-consolidated-recovery-drill-validation.md)
+93. [Witness outage effect-boundary drill](research/witness-outage-effect-boundary-validation.md)
 
 ## Architecture
 
