@@ -22,6 +22,8 @@ The [repository PostgreSQL command](witness-postgres-check-command.md) now repro
 
 Phase 8.4bj reran the default PostgreSQL command after the authentication fix: **7 passed, 28 deselected in 12.72s**, with 65 product-source checks, successful migrations and fixture cleanup. See [current focused PostgreSQL checkpoint](witness-auth-postgres-checkpoint.md). This predates initialization-mode and ticket-MAC validation. It updates the selected wrapper/RPC/lost-reply cases only; the 35-case whole-file result above remains historical.
 
+Phase 8.4bn subsequently reran the complete admission file after initialization-mode and ticket-MAC validation: **35 passed in 52.69s**, including the seven witness cases, with 65 product-source checks, successful migrations and verified fixture cleanup. See [current PostgreSQL checkpoint and prerequisites](witness-current-postgres-checkpoint.md). This refreshes the full-file PostgreSQL result; it is separate from the 153-case local result and establishes no protected-infrastructure guarantee.
+
 | Collected module | Cases |
 | --- | ---: |
 | [Durable protocol](../../backend/tests/test_durable_local_recovery_witness.py) | 59 |
