@@ -22,6 +22,15 @@ def _json_bytes(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':')).encode('ascii')
 
 
+def _unique_json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise WitnessTransportDenied('witness config unavailable')
+        result[key] = value
+    return result
+
+
 def _read_frame(connection):
     data = bytearray()
     while len(data) <= _MAX_FRAME:
@@ -198,26 +207,41 @@ def serve_config(path):
     if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or
             stat.S_IMODE(info.st_mode) != 0o600):
         raise WitnessTransportDenied('private witness config required')
-    config = json.loads(config_path.read_text())
-    if 'caller_keyrings' in config:
-        caller_keys = {name: {key_id: bytes.fromhex(value) for key_id, value in keys.items()}
-                       for name, keys in config['caller_keyrings'].items()}
-        current_caller_key_ids = config['current_caller_key_ids']
-    else:
-        caller_keys = {name: bytes.fromhex(value) for name, value in config['caller_keys'].items()}
-        current_caller_key_ids = None
-    witness_config = {
-        'caller_keys': caller_keys,
-        'current_caller_key_ids': current_caller_key_ids,
-        'advance_callers': frozenset(config.get('advance_callers', [])),
-    }
-    if 'state_keys' in config:
-        witness_config['state_keys'] = {name: bytes.fromhex(value)
-                                        for name, value in config['state_keys'].items()}
-        witness_config['current_state_key_id'] = config['current_state_key_id']
-    else:
-        witness_config['state_key'] = bytes.fromhex(config['state_key'])
-    witness = DurableLocalRecoveryWitness(config['state_path'], **witness_config)
+    try:
+        config = json.loads(config_path.read_text(), object_pairs_hook=_unique_json_object)
+        if type(config) is not dict:
+            raise WitnessTransportDenied('witness config unavailable')
+        caller_ring = 'caller_keyrings' in config
+        state_ring = 'state_keys' in config
+        expected = {'socket_path', 'state_path', 'advance_callers'}
+        expected |= ({'caller_keyrings', 'current_caller_key_ids'} if caller_ring
+                     else {'caller_keys'})
+        expected |= ({'state_keys', 'current_state_key_id'} if state_ring else {'state_key'})
+        if set(config) - {'advance_callers'} != expected - {'advance_callers'}:
+            raise WitnessTransportDenied('witness config fields unavailable')
+        if caller_ring:
+            caller_keys = {name: {key_id: bytes.fromhex(value) for key_id, value in keys.items()}
+                           for name, keys in config['caller_keyrings'].items()}
+            current_caller_key_ids = config['current_caller_key_ids']
+        else:
+            caller_keys = {name: bytes.fromhex(value) for name, value in config['caller_keys'].items()}
+            current_caller_key_ids = None
+        witness_config = {
+            'caller_keys': caller_keys,
+            'current_caller_key_ids': current_caller_key_ids,
+            'advance_callers': frozenset(config.get('advance_callers', [])),
+        }
+        if state_ring:
+            witness_config['state_keys'] = {name: bytes.fromhex(value)
+                                            for name, value in config['state_keys'].items()}
+            witness_config['current_state_key_id'] = config['current_state_key_id']
+        else:
+            witness_config['state_key'] = bytes.fromhex(config['state_key'])
+        witness = DurableLocalRecoveryWitness(config['state_path'], **witness_config)
+    except WitnessTransportDenied:
+        raise
+    except (json.JSONDecodeError, UnicodeError, ValueError, KeyError, TypeError, AttributeError):
+        raise WitnessTransportDenied('witness config unavailable') from None
     server = LocalWitnessUnixServer(witness, config['socket_path']).start()
     try:
         while True:

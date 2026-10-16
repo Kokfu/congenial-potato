@@ -132,14 +132,19 @@ def test_separate_server_and_client_processes_authenticate_and_recover(tmp_path)
         'state_path': str(state_path),
         'caller_keyrings': {CALLER: {'caller-v1': old_key.hex(), 'caller-v2': new_key.hex()}},
         'current_caller_key_ids': {CALLER: 'caller-v2'},
-        'client_keyrings': {'caller-v1': old_key.hex(), 'caller-v2': new_key.hex()},
-        'client_key_id': 'caller-v2', 'state_key': STATE_KEY.hex()}
+        'state_key': STATE_KEY.hex()}
     config_path = tmp_path/'server-config.json'
     config_path.write_text(json.dumps(config))
     config_path.chmod(0o600)
+    client_config_path = tmp_path/'client-config.json'
+    client_config = {'socket_path': config['socket_path'],
+        'client_keyrings': {'caller-v1': old_key.hex(), 'caller-v2': new_key.hex()},
+        'client_key_id': 'caller-v2'}
+    client_config_path.write_text(json.dumps(client_config))
+    client_config_path.chmod(0o600)
     config_path.parent.chmod(0o700)
     invocation, ledger, digest = str(uuid4()), str(uuid4()), 'd'*64
-    args = [sys.executable, '-c', client_program(), str(config_path),
+    args = [sys.executable, '-c', client_program(), str(client_config_path),
         invocation, ledger, digest]
     client_env = dict(os.environ)
     client_env['PYTHONPATH'] = str(Path(transport_module.__file__).parent) + os.pathsep + client_env.get('PYTHONPATH', '')
@@ -206,6 +211,22 @@ def test_client_rejects_oversized_request_before_connect(tmp_path):
     client = UnixWitnessClient(tmp_path/'absent.sock', caller_id=CALLER, key=CALLER_KEY)
     with pytest.raises(WitnessTransportDenied, match='frame'):
         client.request({'operation':'reserve', 'payload':'x'*20000})
+
+
+def test_server_config_rejects_duplicate_and_unexpected_fields(tmp_path):
+    config_path = tmp_path/'server-config.json'
+    duplicate = '{"socket_path":"first","socket_path":"second"}'
+    config_path.write_text(duplicate)
+    config_path.chmod(0o600)
+    with pytest.raises(WitnessTransportDenied, match='config unavailable'):
+        transport_module.serve_config(config_path)
+    config = {'socket_path':'/tmp/witness.sock', 'state_path':'/tmp/witness.sqlite3',
+        'caller_keys':{CALLER:CALLER_KEY.hex()}, 'state_key':STATE_KEY.hex(),
+        'client_keyrings':{'client-v1':CALLER_KEY.hex()}}
+    config_path.write_text(json.dumps(config))
+    config_path.chmod(0o600)
+    with pytest.raises(WitnessTransportDenied, match='config fields unavailable'):
+        transport_module.serve_config(config_path)
 
 
 @pytest.mark.skipif(not hasattr(socket, 'SO_PEERCRED'),
