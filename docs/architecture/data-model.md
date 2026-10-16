@@ -68,3 +68,9 @@ Later code work uses isolated worktrees and commit/diff provenance, not shared a
 ## Indexes
 
 Task board, pending approvals, timelines, conversation order, version lookup, schedule and scoped full-text indexes. Avoid speculative indexes or JSON where integrity requires relations. Validated tool arguments/versioned provider metadata may use JSON.
+
+## Implemented runner fixture records
+
+The logical model above is broader than deployed features. Current fixture migrations persist `RunnerProfileGrant` for exact owner-controlled profile/image/job pins, `RunnerAttempt` keyed by consumed invocation with capability/manifest/binding hashes, and `RunnerResult` keyed by that attempt with bounded metadata and explicit `synthetic_runner` trust origin. Unknown admission cannot be reissued. Accepted status requires a result hash; service acceptance atomically commits the result, attempt/invocation status and audit/activity. No update route or memory/context promotion is provided.
+
+Service digest checks and guarded downgrade protect ordinary replay/rollback; they do not establish immutability against database administrators or stale restores. See [runner fixture acceptance](../research/governed-runner-acceptance.md).

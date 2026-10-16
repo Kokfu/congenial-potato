@@ -38,6 +38,8 @@ Reuse checkpoints. Interrupted step can rerun; external effects need idempotency
 
 Classify retryability; no swallowed errors or indefinite retries.
 
+The governed runner remains a test-only fixture outside DBOS/product dispatch. Its committed `RunnerAttempt` consumes launch admission even if capability delivery or the result is lost. A process restart must not use generic step retry to launch again. A committed result may return only exact authenticated historical metadata; absent/rejected results remain unknown. Process-exit checks do not establish stale-restore safety. See [runner fixture acceptance](../research/governed-runner-acceptance.md).
+
 ## Schedules
 
 Target/objective, timezone, recurrence, enabled state and limits.

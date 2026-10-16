@@ -66,6 +66,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 58. [Independent runner admission fixture](research/runner-admission-validation.md)
 59. [Authenticated transient runner results](research/runner-result-contract-validation.md)
 60. [Durable synthetic runner results](research/runner-result-acceptance-validation.md)
+61. [Governed runner fixture acceptance](research/governed-runner-acceptance.md)
 
 ## Architecture
 
@@ -89,4 +90,4 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 
 ## Current coding task
 
-Follow [progress.md](../progress.md) task by task. Phase 7 local synthetic acceptance and the Phase 8 OS-isolated fixed-job fixture are complete; the latest full backend run passed 663 tests with 32 Docker cases skipped; the focused Docker-enabled runner run passed all 152 tests and fresh-volume Compose smoke passed. Product reads, runner dispatch and Phase 2 native activation remain closed. Owner-pinned runner grants are persisted as inert metadata. Typed fixed-job proposals now remain inert in owner review. Exact owner approvals now remain staged. Independent database admission now fences the test-only runner bridge. Transient result envelopes now authenticate one durable synthetic metadata result under fresh authority. Exact duplicates return historical metadata without execution; missing/rejected results retain unknown admission. Next consolidate the governed-runner fixture acceptance matrix and recovery/key/transport limits. Keep arbitrary shell/browser execution, paid calls, real outbound effects and production credentials disabled.
+Follow [progress.md](../progress.md) task by task. Phase 7 local synthetic acceptance and the Phase 8 OS-isolated fixed-job fixture are complete; the latest full backend run passed 663 tests with 32 Docker cases skipped; the focused Docker-enabled runner run passed all 152 tests and fresh-volume Compose smoke passed. Product reads, runner dispatch and Phase 2 native activation remain closed. Owner-pinned runner grants are persisted as inert metadata. Typed fixed-job proposals now remain inert in owner review. Exact owner approvals now remain staged. Independent database admission now fences the test-only runner bridge. Transient result envelopes now authenticate one durable synthetic metadata result under fresh authority. Exact duplicates return historical metadata without execution; missing/rejected results retain unknown admission. The governed-runner fixture matrix is consolidated; next test precommit result loss and unavailable keys across fresh interpreters. Product key/transport/restore acceptance remains open. Keep arbitrary shell/browser execution, paid calls, real outbound effects and production credentials disabled.
