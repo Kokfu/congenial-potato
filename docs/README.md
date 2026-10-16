@@ -89,6 +89,7 @@ The repository now contains a fixture-only self-hosted foundation. Provider work
 81. [Local witness storage-path guard](research/witness-storage-path-guard-validation.md)
 82. [Local witness process key rotation](research/witness-process-key-rotation-validation.md)
 83. [Local witness server configuration](research/witness-server-config-validation.md)
+84. [Local witness state-key rotation across processes](research/witness-state-process-key-rotation-validation.md)
 
 ## Architecture
 
