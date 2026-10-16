@@ -127,6 +127,13 @@ elif mode == 'old-key':
         print('denied')
     else:
         print('accepted')
+elif mode == 'advance-race':
+    ready=Path(config['ready_dir'])/str(os.getpid())
+    ready.touch(mode=0o600)
+    while not Path(config['start_file']).exists():
+        time.sleep(0.005)
+    print(json.dumps(client.request({'operation':'advance','request_id':invocation}),
+        sort_keys=True))
 elif mode == 'advance-denied':
     try:
         client.request({'operation':'advance','request_id':invocation})
@@ -351,6 +358,62 @@ def test_separate_client_processes_racing_consume_commit_once(tmp_path):
         with sqlite3.connect(state_path) as db:
             assert db.execute("SELECT count(*) FROM witness_events "
                 "WHERE event='consumed'").fetchone()[0] == 1
+    finally:
+        for client in clients:
+            if client.poll() is None:
+                client.terminate()
+                client.wait(timeout=2)
+        stop_server(server)
+
+
+@pytest.mark.skipif(not hasattr(__import__('socket'), 'SO_PEERCRED'),
+    reason='local peer credential transport requires Linux SO_PEERCRED')
+def test_separate_admin_processes_retry_generation_advance_once(tmp_path):
+    socket_dir = tmp_path/'private-socket'
+    socket_dir.mkdir(mode=0o700)
+    state_dir = tmp_path/'witness-state'
+    state_dir.mkdir(mode=0o700)
+    state_path = state_dir/'witness.sqlite3'
+    DurableLocalRecoveryWitness(state_path, caller_keys={CALLER:CALLER_KEY},
+        state_key=STATE_KEY, advance_callers={CALLER}, initialize=True)
+    config = {'socket_path':str(socket_dir/'witness.sock'),
+        'state_path':str(state_path), 'caller_keys':{CALLER:CALLER_KEY.hex()},
+        'state_key':STATE_KEY.hex(), 'advance_callers':[CALLER]}
+    config_path = tmp_path/'server-config.json'
+    config_path.write_text(json.dumps(config))
+    config_path.chmod(0o600)
+    start_signal = tmp_path/'start-advance-race'
+    ready_dir = tmp_path/'ready-clients'
+    ready_dir.mkdir(mode=0o700)
+    client_config_path = tmp_path/'client-config.json'
+    client_config = {'socket_path':config['socket_path'],
+        'start_file':str(start_signal),'ready_dir':str(ready_dir)}
+    client_config_path.write_text(json.dumps(client_config))
+    client_config_path.chmod(0o600)
+    args = [sys.executable,'-c',client_program(),str(client_config_path)]
+    client_env = dict(os.environ)
+    client_env['PYTHONPATH'] = str(Path(transport_module.__file__).parent) + os.pathsep + client_env.get('PYTHONPATH','')
+    request_id = str(uuid4())
+    server = start_server(config_path)
+    clients = []
+    try:
+        clients = [subprocess.Popen(args+[request_id,str(uuid4()),'a'*64,'advance-race'],
+            stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,env=client_env)
+            for _ in range(2)]
+        deadline = time.monotonic() + 5
+        while len(list(ready_dir.iterdir())) < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert len(list(ready_dir.iterdir())) == 2, 'admin processes did not reach the advance barrier'
+        start_signal.touch(mode=0o600)
+        results = [client.communicate(timeout=10) for client in clients]
+        assert [client.returncode for client in clients] == [0,0]
+        replies = [json.loads(stdout) for stdout, _ in results]
+        assert replies == [{'generation':2,'request_id':request_id,'status':'advanced'}]*2
+        with sqlite3.connect(state_path) as db:
+            assert db.execute('SELECT generation FROM witness_state').fetchone()[0] == 2
+            assert db.execute('SELECT count(*) FROM generation_operations').fetchone()[0] == 1
+            assert db.execute("SELECT count(*) FROM witness_events "
+                "WHERE event='generation_advanced'").fetchone()[0] == 1
     finally:
         for client in clients:
             if client.poll() is None:
