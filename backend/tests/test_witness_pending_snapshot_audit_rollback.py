@@ -21,7 +21,7 @@ class PendingSnapshotAuditRollbackTests(unittest.TestCase):
             mac = request_mac(caller_key, caller, request)
             envelope = method(caller_id=caller, request=request,
                 mac=mac)
-            verify_response(caller_key, envelope, expected_request_mac=mac)
+            verify_response(caller_key, envelope, expected_request_mac=mac, expected_request=request)
             return envelope
 
         def audit_rows(path):

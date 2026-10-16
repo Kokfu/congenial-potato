@@ -62,7 +62,8 @@ def test_caller_and_key_id_boundaries_cannot_relabel_a_request_mac(tmp_path, exc
     assert ordinary_mac != admin_mac
     reply = witness.advance_generation(caller_id=admin, caller_key_id=admin_key_id,
         request=request, mac=admin_mac, exchange_nonce=exchange_nonce)
-    assert verify_response(key, reply, admin_key_id, expected_request_mac=admin_mac)['generation'] == 2
+    assert verify_response(key, reply, admin_key_id, expected_request_mac=admin_mac,
+        expected_request=request)['generation'] == 2
     with sqlite3.connect(path) as db:
         assert db.execute('SELECT caller_id, caller_key_id FROM witness_events').fetchall() == [(admin, admin_key_id)]
 
@@ -70,7 +71,7 @@ def test_caller_and_key_id_boundaries_cannot_relabel_a_request_mac(tmp_path, exc
 def call(witness, request, *, key=CALLER_KEY, caller=CALLER, key_id='caller-v1'):
     envelope = dispatch(witness, request, caller=caller, key=key, key_id=key_id)
     return verify_response(key, envelope, key_id,
-        expected_request_mac=request_mac(key, caller, request, key_id))
+        expected_request_mac=request_mac(key, caller, request, key_id), expected_request=request)
 
 
 def dispatch(witness, request, *, caller=CALLER, key=CALLER_KEY, key_id='caller-v1'):

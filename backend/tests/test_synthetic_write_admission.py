@@ -312,7 +312,7 @@ def test_live_witness_blocks_single_or_joint_store_rollback(authenticated, tmp_p
         caller_id = 'synthetic-write-fixture'
         mac = request_mac(b'c'*32, caller_id, request)
         envelope = method(caller_id=caller_id, request=request, mac=mac)
-        return verify_response(b'c'*32, envelope, expected_request_mac=mac)
+        return verify_response(b'c'*32, envelope, expected_request_mac=mac, expected_request=request)
 
     def witnessed_effect():
         binding = {'operation': 'reserve', 'request_id': invocation_id,

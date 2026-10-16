@@ -58,8 +58,9 @@ def request_mac(key: bytes, caller_id: str, request: dict, key_id='caller-v1', *
     return hmac.digest(key, domain + _canonical(message), 'sha256').hex()
 
 
-def verify_response(key: bytes, envelope: dict, key_id='caller-v1', *, expected_request_mac=None) -> dict:
-    """Authenticate a response; callers with an outstanding request must bind it."""
+def verify_response(key: bytes, envelope: dict, key_id='caller-v1', *,
+                    expected_request_mac=None, expected_request=None) -> dict:
+    """Authenticate captured replies; active callers supply both request expectations."""
     if type(envelope) is not dict or set(envelope) != {'body', 'key_id', 'request_mac', 'mac'} or envelope['key_id'] != key_id:
         raise WitnessDenied('witness response unavailable')
     body, mac = envelope['body'], envelope['mac']
@@ -73,9 +74,48 @@ def verify_response(key: bytes, envelope: dict, key_id='caller-v1', *, expected_
     if not hmac.compare_digest(expected, mac):
         raise WitnessDenied('witness response authentication failed')
     if expected_request_mac is not None and (type(expected_request_mac) is not str or
+            re.fullmatch(r'[0-9a-f]{64}', expected_request_mac) is None or
             not hmac.compare_digest(binding, expected_request_mac)):
         raise WitnessDenied('witness response request binding failed')
+    if (expected_request_mac is None) != (expected_request is None):
+        raise WitnessDenied('witness response request expectations incomplete')
+    if expected_request is not None:
+        _validate_response_body(expected_request, body)
     return body
+
+
+def _validate_response_body(request, body):
+    if type(request) is not dict or type(request.get('operation')) is not str:
+        raise WitnessDenied('witness response body unavailable')
+    schemas = {
+        'generation': ({'status', 'generation'}, 'current', ()),
+        'reserve': ({'status', 'generation', 'request_id', 'ledger_id', 'invocation_id',
+            'intent_sha256', 'state_key_id', 'nonce', 'ticket_mac'}, 'reserved',
+            ('request_id', 'ledger_id', 'invocation_id', 'intent_sha256')),
+        'consume': ({'status', 'generation', 'request_id', 'invocation_id'}, 'spent',
+            ('request_id', 'invocation_id', 'generation')),
+        'advance': ({'status', 'generation', 'request_id'}, 'advanced', ('request_id',)),
+    }
+    schema = schemas.get(request['operation'])
+    if schema is None:
+        raise WitnessDenied('witness response body unavailable')
+    fields, status, echoes = schema
+    if set(body) != fields or body['status'] != status:
+        raise WitnessDenied('witness response body unavailable')
+    if type(body['generation']) is not int or not 1 <= body['generation'] <= _MAX_GENERATION:
+        raise WitnessDenied('witness response generation unavailable')
+    for field in echoes:
+        if (field not in request or type(body[field]) is not type(request[field]) or
+                body[field] != request[field]):
+            raise WitnessDenied('witness response body binding failed')
+    for field in ('request_id', 'ledger_id', 'invocation_id', 'nonce'):
+        if field in body:
+            _identity(body[field], 'response identity')
+    if request['operation'] == 'reserve':
+        _digest(body['intent_sha256'])
+        _digest(body['ticket_mac'])
+        if type(body['state_key_id']) is not str or not body['state_key_id']:
+            raise WitnessDenied('witness response state key unavailable')
 
 
 class DurableLocalRecoveryWitness:
