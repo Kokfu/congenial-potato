@@ -1,6 +1,7 @@
 """Private Unix-socket RPC prototype; test-only and same-host only."""
 import json
 import errno
+import math
 import os
 import socket
 import socketserver
@@ -35,6 +36,25 @@ def _unique_json_object(pairs):
             raise WitnessTransportDenied('witness config unavailable')
         result[key] = value
     return result
+
+
+def _reject_json_constant(value):
+    raise WitnessTransportDenied('witness JSON constant unavailable')
+
+
+def _finite_json_float(text):
+    value = float(text)
+    if not math.isfinite(value):
+        raise WitnessTransportDenied('witness JSON number unavailable')
+    return value
+
+
+def _decode_json(text):
+    try:
+        return json.loads(text, object_pairs_hook=_unique_json_object,
+            parse_constant=_reject_json_constant, parse_float=_finite_json_float)
+    except (ValueError, UnicodeError, RecursionError):
+        raise WitnessTransportDenied('witness JSON unavailable') from None
 
 
 def _read_frame(connection):
@@ -90,8 +110,7 @@ class UnixWitnessClient:
                 connection.settimeout(self.timeout)
                 connection.connect(self.socket_path)
                 connection.sendall(payload)
-                response = json.loads(_read_frame(connection).decode('ascii'),
-                    object_pairs_hook=_unique_json_object)
+                response = _decode_json(_read_frame(connection).decode('ascii'))
         except WitnessTransportDenied:
             raise
         except (OSError, UnicodeError, json.JSONDecodeError, TimeoutError):
@@ -101,7 +120,7 @@ class UnixWitnessClient:
         try:
             return verify_response(key, response, self.current_key_id,
                 expected_request_mac=frame['mac'])
-        except WitnessDenied:
+        except (WitnessDenied, RecursionError):
             raise WitnessTransportDenied('witness response authentication failed') from None
 
 
@@ -116,8 +135,7 @@ class _UnixHandler(socketserver.BaseRequestHandler):
             _, peer_uid, _ = struct.unpack('3i', raw)
             if peer_uid != self.server.allowed_uid:
                 raise WitnessTransportDenied('peer identity unavailable')
-            envelope = json.loads(_read_frame(connection).decode('ascii'),
-                object_pairs_hook=_unique_json_object)
+            envelope = _decode_json(_read_frame(connection).decode('ascii'))
             if (type(envelope) is not dict or set(envelope) != {'caller_id','caller_key_id','request','exchange_nonce','mac'} or
                     type(envelope['caller_id']) is not str or type(envelope['request']) is not dict or
                     type(envelope['exchange_nonce']) is not str):
@@ -136,7 +154,7 @@ class _UnixHandler(socketserver.BaseRequestHandler):
                               mac=envelope['mac'], caller_key_id=envelope['caller_key_id'],
                               exchange_nonce=envelope['exchange_nonce'])
         except (WitnessDenied, WitnessTransportDenied, OSError, UnicodeError,
-                json.JSONDecodeError, ValueError, KeyError, TypeError):
+                json.JSONDecodeError, ValueError, KeyError, TypeError, RecursionError):
             response = {'error': 'denied'}
         try:
             connection.sendall(_json_bytes(response) + b'\n')
@@ -282,7 +300,7 @@ def serve_config(path):
             stat.S_IMODE(info.st_mode) != 0o600):
         raise WitnessTransportDenied('private witness config required')
     try:
-        config = json.loads(config_path.read_text(), object_pairs_hook=_unique_json_object)
+        config = _decode_json(config_path.read_text())
         if type(config) is not dict:
             raise WitnessTransportDenied('witness config unavailable')
         caller_ring = 'caller_keyrings' in config

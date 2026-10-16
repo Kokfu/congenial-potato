@@ -42,3 +42,22 @@ git diff --check
 Result: **58 cases passed in 2.73s**, including the previous 46 durable/protocol/process cases, nine in-memory regressions, the pending-snapshot audit drill and two response-parser tests (one with four duplicate-field subcases). Compilation, local Markdown link checks and whitespace checks passed. Local socket tests ran with sandbox permission; no TCP/IP effect service, product dispatch or production integration was started.
 
 Strict parsing removes ambiguous response interpretation. It does not add response freshness or request correlation, independent anti-rollback state, protected audit retention, remote authentication, protected infrastructure or physical power-loss evidence. These remain separate concerns; product dispatch stays disabled.
+
+## Phase 8.4ay: shared decoder and finite numbers
+
+Date: 2026-10-16. Branch: `phase-8-witness-strict-json-decode`. Parent: caller-effect boundary draft PR #122.
+
+The client previously accepted signed fixture responses containing NaN, positive/negative infinity, and positive/negative exponent overflow (`1e999`/`-1e999`). Python decoded those values as non-finite floats and the fixture HMAC still authenticated. A response containing an integer beyond the interpreter's configured conversion limit also leaked a `ValueError` instead of the transport's denial exception. These were the concrete failures reproduced before the change.
+
+Client responses, server requests and server configuration now share one decoder. It retains duplicate-field rejection, rejects nonstandard numeric constants and non-finite float conversion, and maps decoding `ValueError`, Unicode and recursion failures to `WitnessTransportDenied`. The response-verification/server boundaries also normalize a recursion failure during canonicalization rather than letting it escape the transport API. Frame size, timeout, request authentication and persisted formats are unchanged.
+
+The response regressions cover five otherwise authenticating non-finite numeric forms and integer-conversion failure. Additional 6,000-level, roughly 12 KB nested inputs remain inside the RPC byte cap and deny without state mutation; the server serves the next authenticated request. This runtime already denied those raw nested-array shapes on the parent, so they are retained boundary checks, not claimed natural recursion-error reproductions. A separate explicit decoder `RecursionError` injection verifies error normalization without changing interpreter limits. Deep server configuration also denies before server construction.
+
+```sh
+/tmp/witness-local-venv/bin/python scripts/check_local_witness.py
+git diff --check
+```
+
+Result: **101 local cases passed in 6.31s**, **65 product Python files passed the static import guard**, and **15 files compiled**. Changed-document Markdown links and whitespace checks passed. Unix sockets used sandbox permission; PostgreSQL/product integration were not run.
+
+This validates decoding and finite numeric representation, not every response-body schema or authenticated execution truth. The configured integer-string limit remains the interpreter's own limit; there is no new global CPU/memory/deployment budget. Independent service/state/key/audit protection and restore reconciliation remain [external prerequisites](witness-trust-boundary-lifecycle.md). Product dispatch, real external writes, paid models, deployment and production integration stay disabled; no protected-infrastructure or physical power-loss claim is made.

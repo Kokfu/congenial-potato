@@ -647,6 +647,20 @@ def test_server_config_rejects_duplicate_and_unexpected_fields(tmp_path):
         transport_module.serve_config(config_path)
 
 
+def test_server_config_maps_excessive_json_nesting_to_denial(tmp_path, monkeypatch):
+    depth = 6000
+    path = tmp_path/'config.json'
+    path.write_text('[' * depth + '0' + ']' * depth)
+    path.chmod(0o600)
+
+    def unexpected_server(*args, **kwargs):
+        pytest.fail('deep configuration reached server construction')
+
+    monkeypatch.setattr(transport_module, 'LocalWitnessUnixServer', unexpected_server)
+    with pytest.raises(WitnessTransportDenied):
+        transport_module.serve_config(path)
+
+
 @pytest.mark.parametrize('allowlist', [
     'ab', {'a': True, 'b': False}, None, True, 1,
     [1], [''], ['a', 'a'], ['unknown'],
