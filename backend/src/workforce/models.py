@@ -620,3 +620,17 @@ class SyntheticWriteAdmission(Base):
     capability_sha256: Mapped[str] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(20), default='unknown')
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class SyntheticWriteReceipt(Base):
+    """Immutable fixture receipt acceptance; it never promotes model context."""
+    __tablename__ = 'synthetic_write_receipts'
+    __table_args__ = (
+        CheckConstraint("trust_origin = 'synthetic_write'", name='ck_synthetic_write_receipt_trust'),
+    )
+    invocation_id: Mapped[str] = mapped_column(
+        ForeignKey('synthetic_write_admissions.invocation_id'), primary_key=True)
+    receipt_sha256: Mapped[str] = mapped_column(String(64))
+    receipt: Mapped[dict] = mapped_column(JSON)
+    trust_origin: Mapped[str] = mapped_column(String(30), default='synthetic_write')
+    accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
