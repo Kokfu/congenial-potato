@@ -281,3 +281,39 @@ def test_pending_ticket_survives_caller_key_overlap_and_stays_spent_after_retire
         assert db.execute('SELECT count(*) FROM records').fetchone()[0] == 1
         assert db.execute('SELECT count(*) FROM attempts').fetchone()[0] == 1
 
+
+def test_pending_ticket_survives_state_key_overlap_and_stays_spent_after_retirement(tmp_path):
+    intent, control, ledger_dir, ledger_path, _, witness_path, witness = setup(tmp_path)
+    invocation = str(intent.scope.invocation_id)
+    reserve = {'operation': 'reserve', 'request_id': invocation,
+        'ledger_id': str(intent.ledger_id), 'invocation_id': invocation,
+        'intent_sha256': intent_digest(intent)}
+    permit = authenticated(witness.reserve, reserve)
+    assert permit['state_key_id'] == 'state-v1'
+
+    replacement_state_key = b'q' * 32
+    overlapping = DurableLocalRecoveryWitness(witness_path,
+        caller_keys={CALLER: CALLER_KEY},
+        state_keys={'state-v1': STATE_KEY, 'state-v2': replacement_state_key},
+        current_state_key_id='state-v2')
+    consume = {'operation': 'consume', **{key: permit[key] for key in
+        ('request_id','ledger_id','invocation_id','intent_sha256','generation',
+         'state_key_id','nonce')}, 'ticket_mac': permit['ticket_mac']}
+    assert authenticated(overlapping.consume, consume)['status'] == 'spent'
+
+    with sqlite3.connect(control) as db:
+        db.execute('INSERT INTO admission VALUES (?,?)', (invocation, 'unknown'))
+    ledger = SyntheticWriteLedger(ledger_dir, ledger_id=intent.ledger_id,
+        key=LEDGER_KEY, experiment_enabled=True)
+    receipt = verify_write_receipt(ledger.apply(intent, CONTENT), intent, key=LEDGER_KEY)
+    assert receipt.result_revision == 1
+
+    retired = DurableLocalRecoveryWitness(witness_path,
+        caller_keys={CALLER: CALLER_KEY}, state_keys={'state-v2': replacement_state_key},
+        current_state_key_id='state-v2')
+    with pytest.raises(WitnessDenied, match='consumed'):
+        authenticated(retired.reserve, reserve)
+    with sqlite3.connect(ledger_path) as db:
+        assert db.execute('SELECT count(*) FROM records').fetchone()[0] == 1
+        assert db.execute('SELECT count(*) FROM attempts').fetchone()[0] == 1
+
