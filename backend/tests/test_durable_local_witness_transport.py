@@ -332,11 +332,15 @@ def test_separate_client_processes_racing_consume_commit_once(tmp_path):
     state_dir = tmp_path/'witness-state'
     state_dir.mkdir(mode=0o700)
     state_path = state_dir/'witness.sqlite3'
+    replacement_key = b'w' * 32
     DurableLocalRecoveryWitness(state_path,
-        caller_keys={CALLER:CALLER_KEY}, state_key=STATE_KEY, initialize=True)
+        caller_keys={CALLER:{'caller-v1':CALLER_KEY,'caller-v2':replacement_key}},
+        current_caller_key_ids={CALLER:'caller-v2'}, state_key=STATE_KEY, initialize=True)
     config = {'socket_path':str(socket_dir/'witness.sock'),
-        'state_path':str(state_path), 'caller_keys':{CALLER:CALLER_KEY.hex()},
-        'state_key':STATE_KEY.hex()}
+        'state_path':str(state_path),
+        'caller_keyrings':{CALLER:{'caller-v1':CALLER_KEY.hex(),
+            'caller-v2':replacement_key.hex()}},
+        'current_caller_key_ids':{CALLER:'caller-v2'},'state_key':STATE_KEY.hex()}
     config_path = tmp_path/'server-config.json'
     config_path.write_text(json.dumps(config))
     config_path.chmod(0o600)
@@ -344,13 +348,17 @@ def test_separate_client_processes_racing_consume_commit_once(tmp_path):
     ready_dir = tmp_path/'ready-clients'
     ready_dir.mkdir(mode=0o700)
     ticket_path = tmp_path/'pending-ticket.json'
-    client_config_path = tmp_path/'client-config.json'
-    client_config = {'socket_path':config['socket_path'],
-        'ticket_path':str(ticket_path),'start_file':str(start_signal),
-        'ready_dir':str(ready_dir)}
-    client_config_path.write_text(json.dumps(client_config))
-    client_config_path.chmod(0o600)
-    args = [sys.executable,'-c',client_program(),str(client_config_path)]
+    client_keyring = {'caller-v1':CALLER_KEY.hex(),'caller-v2':replacement_key.hex()}
+    client_args = {}
+    for key_id in ('caller-v1','caller-v2'):
+        client_config_path = tmp_path/f'client-{key_id}.json'
+        client_config = {'socket_path':config['socket_path'],
+            'client_keyrings':client_keyring,'client_key_id':key_id,
+            'ticket_path':str(ticket_path),'start_file':str(start_signal),
+            'ready_dir':str(ready_dir)}
+        client_config_path.write_text(json.dumps(client_config))
+        client_config_path.chmod(0o600)
+        client_args[key_id] = [sys.executable,'-c',client_program(),str(client_config_path)]
     client_env = dict(os.environ)
     client_env['PYTHONPATH'] = str(Path(transport_module.__file__).parent) + os.pathsep + client_env.get('PYTHONPATH','')
     content = b'process-race fixture record'
@@ -378,14 +386,14 @@ def test_separate_client_processes_racing_consume_commit_once(tmp_path):
     server = start_server(config_path)
     clients = []
     try:
-        reserve = subprocess.run(args+[invocation,ledger,digest,'reserve-only'],
+        reserve = subprocess.run(client_args['caller-v2']+[invocation,ledger,digest,'reserve-only'],
             capture_output=True,text=True,env=client_env,timeout=10)
         assert reserve.returncode == 0, reserve.stderr
         ticket_path.write_text(reserve.stdout)
         ticket_path.chmod(0o600)
-        clients = [subprocess.Popen(args+[invocation,ledger,digest,'consume-race'],
+        clients = [subprocess.Popen(client_args[key_id]+[invocation,ledger,digest,'consume-race'],
             stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,env=client_env)
-            for _ in range(2)]
+            for key_id in ('caller-v1','caller-v2')]
         deadline = time.monotonic() + 5
         while len(list(ready_dir.iterdir())) < 2 and time.monotonic() < deadline:
             time.sleep(0.01)
@@ -414,7 +422,7 @@ def test_separate_client_processes_racing_consume_commit_once(tmp_path):
         shutil.copy2(snapshots/'control.sqlite3', control_path)
         shutil.copy2(snapshots/'ledger.sqlite3', fake_ledger.path)
         server = start_server(config_path)
-        replay = subprocess.run(args+[invocation,ledger,digest,'retry-consumed'],
+        replay = subprocess.run(client_args['caller-v2']+[invocation,ledger,digest,'retry-consumed'],
             capture_output=True,text=True,env=client_env,timeout=10)
         assert replay.returncode == 0, replay.stderr
         assert replay.stdout.strip() == 'denied'
