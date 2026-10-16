@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import shutil
 import socket
 import sqlite3
 import subprocess
@@ -361,6 +362,19 @@ def test_separate_client_processes_racing_consume_commit_once(tmp_path):
         content_size=len(content), approval_payload_sha256='a'*64,
         policy_snapshot_sha256='b'*64)
     invocation, ledger, digest = str(intent.scope.invocation_id), str(ledger_id), intent_digest(intent)
+    control_dir = tmp_path/'control-fixture'
+    control_dir.mkdir(mode=0o700)
+    control_path = control_dir/'control.sqlite3'
+    with sqlite3.connect(control_path) as db:
+        db.execute('CREATE TABLE admission (invocation_id TEXT PRIMARY KEY, status TEXT NOT NULL)')
+    ledger_dir = tmp_path/'ledger-fixture'
+    ledger_dir.mkdir(mode=0o700)
+    fake_ledger = SyntheticWriteLedger(ledger_dir, ledger_id=ledger_id,
+        key=b'l'*32, experiment_enabled=True)
+    snapshots = tmp_path/'snapshots'
+    snapshots.mkdir(mode=0o700)
+    shutil.copy2(control_path, snapshots/'control.sqlite3')
+    shutil.copy2(fake_ledger.path, snapshots/'ledger.sqlite3')
     server = start_server(config_path)
     clients = []
     try:
@@ -382,10 +396,6 @@ def test_separate_client_processes_racing_consume_commit_once(tmp_path):
         replies = [stdout.strip() for stdout, _ in results]
         assert replies.count('spent') == 1
         assert replies.count('denied') == 1
-        ledger_dir = tmp_path/'ledger-fixture'
-        ledger_dir.mkdir(mode=0o700)
-        fake_ledger = SyntheticWriteLedger(ledger_dir, ledger_id=ledger_id,
-            key=b'l'*32, experiment_enabled=True)
         receipt = verify_write_receipt(fake_ledger.apply(intent, content), intent,
             key=b'l'*32)
         assert receipt.result_revision == 1
@@ -395,12 +405,36 @@ def test_separate_client_processes_racing_consume_commit_once(tmp_path):
         with sqlite3.connect(state_path) as db:
             assert db.execute("SELECT count(*) FROM witness_events "
                 "WHERE event='consumed'").fetchone()[0] == 1
+        with sqlite3.connect(control_path) as db:
+            db.execute('INSERT INTO admission VALUES (?,?)', (invocation, 'unknown'))
+
+        # Restore both effect-side fixtures, but retain and restart the witness state.
+        stop_server(server)
+        server = None
+        shutil.copy2(snapshots/'control.sqlite3', control_path)
+        shutil.copy2(snapshots/'ledger.sqlite3', fake_ledger.path)
+        server = start_server(config_path)
+        replay = subprocess.run(args+[invocation,ledger,digest,'retry-consumed'],
+            capture_output=True,text=True,env=client_env,timeout=10)
+        assert replay.returncode == 0, replay.stderr
+        assert replay.stdout.strip() == 'denied'
+        with sqlite3.connect(control_path) as db:
+            assert db.execute('SELECT count(*) FROM admission').fetchone()[0] == 0
+        with sqlite3.connect(fake_ledger.path) as db:
+            assert db.execute('SELECT count(*) FROM records').fetchone()[0] == 0
+            assert db.execute('SELECT count(*) FROM attempts').fetchone()[0] == 0
+        with sqlite3.connect(state_path) as db:
+            assert db.execute('SELECT consumed FROM reservations WHERE invocation_id=?',
+                (invocation,)).fetchone()[0] == 1
+            assert db.execute("SELECT count(*) FROM witness_events "
+                "WHERE event='consumed'").fetchone()[0] == 1
     finally:
         for client in clients:
             if client.poll() is None:
                 client.terminate()
                 client.wait(timeout=2)
-        stop_server(server)
+        if server is not None:
+            stop_server(server)
 
 
 @pytest.mark.skipif(not hasattr(__import__('socket'), 'SO_PEERCRED'),
