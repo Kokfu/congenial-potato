@@ -1,0 +1,27 @@
+# Usable local MVP completion plan
+
+Date: 2026-10-17. Starting checkpoint: draft PR [#142](https://github.com/Kokfu/congenial-potato/pull/142), `b1f08c3fe747d5482e6b87ec1b6af4526b88602a`.
+
+## Goal and current scope
+
+Make one workflow understandable and repeatable for an owner: sign in, create a project and agent, grant fixture execution, run a task, review an exact proposal, and inspect its saved result and activity. Prioritize this usable path over additional recovery-prototype expansion.
+
+The owner authorized building and local hosting, with an unused port that does not conflict with another project. This session runs in a managed cloud workspace, not on the owner's PC. No PC connection is configured; cloud localhost is not the owner's localhost. Prepare and test a portable PC launcher here, and distinguish cloud validation from actual PC validation. Local hosting authorization does not enable paid models, real external effects, production connections, public deployment or merging.
+
+## Milestones and acceptance
+
+1. **Collision-safe local startup.** Provide a standard-library Python launcher using Docker Compose, its own persistent project/volumes, private local secrets, a free loopback port and status/stop commands. Do not adopt another project's resources, kill occupied ports, change the default Compose stack or delete data on stop. Test occupied-port handling and restart persistence. Provide Windows/macOS/Linux instructions, noting that Docker must support the existing Linux isolation topology.
+2. **First-use browser acceptance.** Make browser test URL/password/browser selectors configurable so tests run on the selected port. Validate login, project/agent creation, execution grant, synthetic task completion, exact approval, artifact persistence, provider-fixture switching and activity. Keep synthetic execution visibly identified. Record actual results and limits; historical full-suite results are not a release guarantee.
+3. **Visible outputs.** Add a project-scoped artifact browser using existing integrity-checked read APIs. Show content as untrusted text, version, digest and provenance. Verify approval-to-output flow, empty/error states and project switching without stale content.
+4. **Usability and recovery checkpoint.** Add a short owner walkthrough, state/data-location notes and troubleshooting. Recheck healthy restart/persistence and isolated egress behavior. Capture the real application, not a mocked API, and record the exact tested browser/build/backend coverage.
+5. **One useful real-model workflow, separately gated.** Define an initial document-to-plan-to-draft workflow, then complete protected credential storage, verified pricing, spending/cancellation and unknown-charge handling before separately authorized live activation. Do not enable paid execution just because local hosting works.
+6. **External capabilities, individually gated.** Protected recovery infrastructure, remote identities/keys/audit, actual effect adapters and operational restore drills remain prerequisites. Real reads/writes, arbitrary shell/browser execution and production deployment are outside the current increment.
+
+## Evidence discipline
+
+Each bounded increment updates this plan and `progress.md`, records commands/results and unresolved limitations, commits a new stacked branch, opens a draft PR and inspects the patch. Local fixtures do not establish protected-infrastructure guarantees. Never publish owner passwords or commit local runtime files.
+
+## Execution ledger
+
+- Milestones 1–2 implemented and validated in the managed Linux workspace: ten launcher checks, successful project-specific builds/startup, four real browser cases, isolated egress denial and preserved project/agent/artifact counts plus login across stop/start. See [actual commands/results and limits](research/mvp-local-launch-validation.md). Actual owner-PC hosting remains unverified.
+- Owner-PC OS clarification requested while independent implementation continues. Actual PC hosting remains unverified until the launcher runs there.

@@ -1,13 +1,10 @@
 import { test, expect } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { ownerPassword, workspaceOrigin } from "./workspace";
 
 test("owner can create project, grant a fixture agent, and review completed task", async ({
   page,
 }) => {
-  const password = readFileSync(
-    "../.local/initial_admin_password",
-    "utf8",
-  ).trim();
+  const password = ownerPassword();
   const suffix = Date.now().toString();
   const project = `Browser fixture ${suffix}`;
   const agent = `Browser agent ${suffix}`;

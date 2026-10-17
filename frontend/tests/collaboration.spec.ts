@@ -1,8 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { ownerPassword, workspaceOrigin } from "./workspace";
 
 test("owner reviews a runtime-originated child proposal", async ({ page }) => {
-  const password = readFileSync("../.local/initial_admin_password", "utf8").trim();
+  const password = ownerPassword();
   await page.goto("/");
   await page.getByLabel("Owner password").fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -12,7 +12,7 @@ test("owner reviews a runtime-originated child proposal", async ({ page }) => {
   const post = async <T,>(path: string, body: unknown): Promise<T> => {
     const response = await page.request.post(path, {
       data: body,
-      headers: { Origin: "http://localhost:8080", "X-CSRF-Token": csrf! },
+      headers: { Origin: workspaceOrigin, "X-CSRF-Token": csrf! },
     });
     expect(response.ok(), `${path}: ${await response.text()}`).toBeTruthy();
     return response.json() as Promise<T>;
