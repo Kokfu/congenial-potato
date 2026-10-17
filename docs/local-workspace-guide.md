@@ -13,12 +13,15 @@ Check out the branch containing this guide, not the repository's initial `main` 
 For the owner's confirmed Windows + Docker Desktop setup, start Docker Desktop and select **Linux containers** (the WSL 2 backend is suitable). Check `docker version` and `docker compose version` in PowerShell. If you do not have a checkout yet, use a new directory so your other project is left alone:
 
 ```powershell
-git clone --branch mvp-artifact-browser https://github.com/Kokfu/congenial-potato.git workforce-local
+git clone --branch mvp-launcher-readiness https://github.com/Kokfu/congenial-potato.git workforce-local
 Set-Location workforce-local
+py scripts/local_workspace.py doctor
 py scripts/local_workspace.py start
 ```
 
-The `mvp-artifact-browser` branch includes this plan, launcher and artifact UI. If that directory already exists, use your existing checkout or choose a different new directory; do not overwrite another project. Actual startup on the owner's Windows machine remains a required owner check because the development session cannot access that PC.
+The `mvp-launcher-readiness` branch includes this plan, launcher, artifact UI and readiness fixes. If that directory already exists, use your existing checkout or choose a different new directory; do not overwrite another project. Actual startup on the owner's Windows machine remains a required owner check because the development session cannot access that PC.
+
+`doctor` checks Python, a local Linux Docker Engine 28+, Docker Compose v2+, availability of a free loopback port, and any retained workspace files/resource labels. It does not initialize a workspace, start or stop containers, read password contents or print them. A successful diagnosis is a prerequisite check, not proof that your particular Windows networking/build/startup will succeed. You may share its non-secret status/error messages when troubleshooting; keep the password files private.
 
 ## Start without conflicting with another project
 
@@ -60,7 +63,7 @@ python3 scripts/local_workspace.py stop
 python3 scripts/local_workspace.py start --no-build
 ```
 
-Use `py` instead of `python3` on Windows. Stop preserves containers, volumes, runtime metadata and passwords. A later start may print a different free port, while retaining the same project and data. If the workspace is already running, start prints its current URL instead of creating a second copy. To change its port, stop it first. Rebuild after source changes with plain `start`.
+Use `py` instead of `python3` on Windows. Stop preserves containers, volumes, runtime metadata and passwords. A later start may print a different free port, while retaining the same project and data. If web is already running, start retains its port, reconciles the entire owned stack and waits for readiness; it can recover a stopped worker/API without creating a second copy. Plain `start` rebuilds images after source changes, even while running; `start --no-build` checks/reconciles using existing images. Readiness failures return a nonzero exit status. To change the port, stop this workspace first.
 
 Do not delete `.local/mvp/` to reset a password: its generated password must stay paired with the existing initialized database. If a retained password file is missing, startup refuses to invent a replacement. Keep local credentials and both database/artifact backups together under your own protection. Actual backup/restore and protected-infrastructure guarantees are separate from a healthy restart.
 
