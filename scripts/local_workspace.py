@@ -50,7 +50,7 @@ def read_state(directory):
     if not path.exists():
         return None
     state = json.loads(path.read_text())
-    if (set(state) != {'project', 'instance', 'port'} or
+    if (type(state) is not dict or set(state) != {'project', 'instance', 'port'} or
             type(state['instance']) is not str or len(state['instance']) != 32 or
             any(c not in '0123456789abcdef' for c in state['instance']) or
             state['project'] != 'workforce-mvp-' + state['instance'][:12] or
@@ -108,9 +108,34 @@ def check_ownership(state):
                     raise ValueError('Existing Docker resource is not owned by this local workspace')
 
 
+def doctor(directory, state):
+    """Inspect prerequisites without initializing a workspace or changing Docker resources."""
+    if sys.version_info < (3, 10):
+        raise ValueError('Python 3.10+ is required')
+    print(f'Python {sys.version_info.major}.{sys.version_info.minor}: ready')
+    require_local_docker()
+    print('Local Docker Engine 28+ / Linux containers: ready')
+    version = run(['docker', 'compose', 'version', '--short'])
+    if int(version.lstrip('v').split('.')[0]) < 2:
+        raise ValueError('Docker Compose v2+ is required')
+    print(f'Docker Compose {version}: ready')
+    available_port()
+    print('An unused loopback port is available; startup will select its own port.')
+    if state:
+        check_ownership(state)
+        for name in ('db_password', 'initial_admin_password', 'compose.json'):
+            if not (directory/name).is_file():
+                raise ValueError(f'Retained workspace file missing: {name}; restore it before startup')
+        run(['docker', 'compose', 'config', '--quiet'], env=environment(directory, state))
+        print('Retained runtime files and Docker ownership: ready (no password contents read)')
+    else:
+        print('No saved workspace yet; start will initialize a separate local project.')
+    print('Doctor passed. This does not validate container startup, network isolation or PC end-to-end behavior.')
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('start', 'status', 'stop'))
+    parser.add_argument('action', choices=('start', 'status', 'stop', 'doctor'))
     parser.add_argument('--port', type=int, help='explicit unused port; otherwise select one automatically')
     parser.add_argument('--state-dir', type=Path, default=ROOT/'.local/mvp')
     parser.add_argument('--no-build', action='store_true', help='use this workspace project images already built')
@@ -118,6 +143,9 @@ def main(argv=None):
     args = parser.parse_args(argv)
     directory = args.state_dir.absolute()
     state = read_state(directory)
+    if args.action == 'doctor':
+        doctor(directory, state)
+        return 0
     if args.action != 'start' and state is None:
         print('Local workspace has not been initialized.')
         return 0
@@ -127,16 +155,17 @@ def main(argv=None):
     if args.action == 'start':
         if args.build_ca and not args.build_ca.is_file():
             raise ValueError('Build CA bundle does not exist')
+        running = ''
         if state:
             running = run(['docker', 'container', 'ls', '-q', '--filter',
                 'label=com.docker.compose.project=' + state['project'], '--filter',
                 'label=com.docker.compose.service=web'])
             if running:
-                if args.port and args.port != state['port']:
+                if args.port is not None and args.port != state['port']:
                     raise ValueError('Stop this workspace before changing its port')
-                print(f"Already running: http://localhost:{state['port']}")
-                return 0
-        port = available_port(args.port)
+        # An existing owned web service already occupies its port. Keep it while
+        # reconciling/building the whole stack and waiting for readiness again.
+        port = state['port'] if running else available_port(args.port)
         if state is None:
             token = uuid4().hex
             state = {'project': 'workforce-mvp-' + token[:12], 'instance': token, 'port': port}
