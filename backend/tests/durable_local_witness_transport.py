@@ -19,6 +19,7 @@ _MAX_FRAME = 16 * 1024
 _FRAME_TIMEOUT = 2.0
 _MAX_CONNECTIONS = 32
 _DRAIN_TIMEOUT = 2.0
+_MAX_CLIENT_TIMEOUT = 2.0
 
 
 class WitnessTransportDenied(ConnectionError):
@@ -57,10 +58,18 @@ def _decode_json(text):
         raise WitnessTransportDenied('witness JSON unavailable') from None
 
 
-def _read_frame(connection):
+def _remaining_timeout(deadline):
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise WitnessTransportDenied('witness transport deadline expired')
+    return remaining
+
+
+def _read_frame(connection, *, deadline=None):
     data = bytearray()
-    timeout = connection.gettimeout()
-    deadline = time.monotonic() + (_FRAME_TIMEOUT if timeout is None else timeout)
+    if deadline is None:
+        timeout = connection.gettimeout()
+        deadline = time.monotonic() + (_FRAME_TIMEOUT if timeout is None else timeout)
     while len(data) <= _MAX_FRAME:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -83,6 +92,9 @@ class UnixWitnessClient:
     """Authenticated fixture client. No TCP/IP connection is opened."""
     def __init__(self, socket_path, *, caller_id, key=None, keys=None,
                  current_key_id='caller-v1', timeout=2):
+        if (type(timeout) not in (int, float) or not 0 < timeout <= _MAX_CLIENT_TIMEOUT or
+                not math.isfinite(timeout)):
+            raise WitnessTransportDenied('witness client timeout unavailable')
         if type(key) is bytes and keys is None:
             keys = {'caller-v1': key}
         if (not _valid_name(caller_id) or not isinstance(keys, dict) or
@@ -106,11 +118,14 @@ class UnixWitnessClient:
         if len(payload) > _MAX_FRAME:
             raise WitnessTransportDenied('witness transport frame unavailable')
         try:
+            deadline = time.monotonic() + self.timeout
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
-                connection.settimeout(self.timeout)
+                connection.settimeout(_remaining_timeout(deadline))
                 connection.connect(self.socket_path)
+                connection.settimeout(_remaining_timeout(deadline))
                 connection.sendall(payload)
-                response = _decode_json(_read_frame(connection).decode('ascii'))
+                response = _decode_json(_read_frame(connection, deadline=deadline).decode('ascii'))
+                _remaining_timeout(deadline)
         except WitnessTransportDenied:
             raise
         except (OSError, UnicodeError, json.JSONDecodeError, TimeoutError):
