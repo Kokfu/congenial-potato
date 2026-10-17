@@ -10,7 +10,8 @@ body {
   margin: 0;
 }
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 button {
@@ -162,6 +163,38 @@ h2 {
 }
 .inline input {
   flex: 1;
+}
+.project-create {
+  display: grid;
+}
+.project-brief-input {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+}
+.project-brief-input textarea {
+  width: 100%;
+  min-height: 8rem;
+  resize: vertical;
+  border: 1px solid #dce5dd;
+  border-radius: 8px;
+  padding: 11px 12px;
+  color: #172321;
+  background: #fff;
+}
+.project-brief {
+  margin-top: 22px;
+}
+.project-brief h3 {
+  font-size: 14px;
+}
+.project-brief pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 24rem;
+  overflow: auto;
+  font: inherit;
+  font-size: 13px;
 }
 .inline input,
 .login input {

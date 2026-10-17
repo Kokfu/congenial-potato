@@ -70,6 +70,7 @@ function App() {
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [projectId, setProjectId] = useState("");
   const [projectName, setProjectName] = useState("");
+  const [projectBrief, setProjectBrief] = useState("");
   const [taskTitle, setTaskTitle] = useState("");
   const [agentName, setAgentName] = useState("");
   const [runAgentId, setRunAgentId] = useState("");
@@ -212,25 +213,43 @@ function App() {
             <section className="panel">
               <h2>Projects</h2>
               <form
-                className="inline"
+                className="inline project-create"
                 onSubmit={(e) => {
                   e.preventDefault();
                   act(async () => {
                     const p = await api<Project>("/api/projects", {
                       method: "POST",
-                      body: JSON.stringify({ name: projectName }),
+                      body: JSON.stringify({ name: projectName, objective: projectBrief }),
                     });
                     setProjectName("");
+                    setProjectBrief("");
                     setProjectId(p.id);
                   });
                 }}
               >
                 <input
                   placeholder="New project name"
+                  aria-label="New project name"
+                  maxLength={160}
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}
                   required
                 />
+                <label className="project-brief-input">
+                  Project brief (optional)
+                  <textarea
+                    value={projectBrief}
+                    onChange={(e) => setProjectBrief(e.target.value)}
+                    maxLength={20000}
+                    rows={6}
+                    aria-describedby="brief-help"
+                    placeholder="Goal, source notes, intended reader, constraints and expected output"
+                  />
+                </label>
+                <p className="muted" id="brief-help">
+                  Up to 20,000 characters. Saved for owner reference; fixture runs do not use this brief.
+                  Keep passwords and credentials out of source notes.
+                </p>
                 <button>Create project</button>
               </form>
               <div className="chips">
@@ -244,6 +263,18 @@ function App() {
                   </button>
                 ))}
               </div>
+              {projectId && (
+                <section className="project-brief" aria-label="Selected project brief">
+                  <h3>Saved project brief</h3>
+                  {projects.find((p) => p.id === projectId)?.objective ? (
+                    <pre aria-label="Saved brief content">
+                      {projects.find((p) => p.id === projectId)?.objective}
+                    </pre>
+                  ) : (
+                    <p className="muted">No brief was saved for this project.</p>
+                  )}
+                </section>
+              )}
             </section>
             {projectId && (
               <section className="panel">
