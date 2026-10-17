@@ -10,6 +10,16 @@ This is a private local prototype, with synthetic model/tool execution only. You
 
 Check out the branch containing this guide, not the repository's initial `main` README-only checkpoint. Use the current draft PR's head branch or GitHub's branch selector. Open a terminal in that checkout.
 
+For the owner's confirmed Windows + Docker Desktop setup, start Docker Desktop and select **Linux containers** (the WSL 2 backend is suitable). Check `docker version` and `docker compose version` in PowerShell. If you do not have a checkout yet, use a new directory so your other project is left alone:
+
+```powershell
+git clone --branch mvp-artifact-browser https://github.com/Kokfu/congenial-potato.git workforce-local
+Set-Location workforce-local
+py scripts/local_workspace.py start
+```
+
+The `mvp-artifact-browser` branch includes this plan, launcher and artifact UI. If that directory already exists, use your existing checkout or choose a different new directory; do not overwrite another project. Actual startup on the owner's Windows machine remains a required owner check because the development session cannot access that PC.
+
 ## Start without conflicting with another project
 
 Windows:
@@ -37,7 +47,7 @@ Only web publishes a port, on `127.0.0.1`. Application/database/worker services 
 3. On Agents, add an agent with a fixture provider/model, then choose **Grant project execution** for that agent.
 4. Return to Projects, choose the agent, add a task, and choose **Run fixture**.
 5. Refresh until the task reaches `review`. This is synthetic background execution, not a live AI answer.
-6. On Approvals, inspect the exact proposed artifact content and approve it. An immutable artifact version is persisted. Artifact browsing is the next UI milestone in the [completion plan](mvp-completion-plan.md); current browser tests verify the saved version through its API.
+6. On Approvals, inspect the exact proposed artifact content and approve it. Open **Artifacts**, select the project, and inspect the saved version, content, SHA-256 digest, author and execution identity. Use **Reload outputs** after a new approval. Errors are shown rather than substituting unverified content; artifact text is displayed literally rather than executed.
 7. Inspect Activity and Collaboration for recorded events and proposal review. Settings identifies the fixture-only model mode.
 
 Execution grants and approvals are separate: granting an agent does not approve arbitrary external actions. Paid models, real outbound effects, arbitrary shell/browser tools and production integration remain disabled.
