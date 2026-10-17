@@ -12,6 +12,7 @@ import os
 import re
 import sqlite3
 import stat
+from contextlib import contextmanager
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -254,12 +255,17 @@ class DurableLocalRecoveryWitness:
             raise WitnessDenied('witness availability unavailable')
         self._available = value
 
+    @contextmanager
     def _connect(self):
         self._validate_private_path()
         db = sqlite3.connect(self.path, timeout=2, isolation_level=None)
-        db.row_factory = sqlite3.Row
-        db.execute('PRAGMA foreign_keys=ON')
-        return db
+        try:
+            with db:
+                db.row_factory = sqlite3.Row
+                db.execute('PRAGMA foreign_keys=ON')
+                yield db
+        finally:
+            db.close()
 
     def _authenticate(self, caller_id, request, mac, caller_key_id='caller-v1', *, exchange_nonce=None):
         if self._available is not True:
