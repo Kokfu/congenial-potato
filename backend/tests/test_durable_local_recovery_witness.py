@@ -232,6 +232,44 @@ def test_connection_closes_when_pragma_setup_fails(tmp_path, monkeypatch):
     assert_connections_closed(connections)
 
 
+@pytest.mark.parametrize('operation', ['reopen', 'generation', 'reserve', 'consume', 'advance'])
+def test_state_removed_at_sqlite_open_is_not_recreated(tmp_path, monkeypatch, operation):
+    witness = create(tmp_path/'witness.sqlite3')
+    ticket = call(witness, reserve_request())
+    requests = {'generation': {'operation': 'generation'},
+        'reserve': reserve_request(), 'consume': consume_request(ticket),
+        'advance': {'operation': 'advance', 'request_id': str(uuid4())}}
+    connect = sqlite3.connect
+    opened = []
+
+    def remove_before_open(*args, **kwargs):
+        # Deterministically remove state after validation, immediately before SQLite opens it.
+        witness.path.unlink()
+        opened.append(True)
+        return connect(*args, **kwargs)
+
+    monkeypatch.setattr(witness_module.sqlite3, 'connect', remove_before_open)
+    with pytest.raises(WitnessDenied, match='state unavailable'):
+        if operation == 'reopen':
+            reopen(witness.path)
+        else:
+            call(witness, requests[operation])
+    assert opened == [True]
+    assert not witness.path.exists()
+
+
+@pytest.mark.parametrize('relative', [False, True], ids=['absolute', 'relative'])
+def test_existing_state_opens_with_uri_sensitive_and_unicode_path(tmp_path, monkeypatch, relative):
+    monkeypatch.chdir(tmp_path)
+    path = Path('witness #?% 管理.sqlite3')
+    if not relative:
+        path = tmp_path/path
+    witness = create(path)
+    ticket = call(witness, reserve_request())
+    assert call(reopen(path), consume_request(ticket))['status'] == 'spent'
+    assert list(tmp_path.iterdir()) == [tmp_path/path.name]
+
+
 def test_reservation_retry_is_idempotent_and_exact_binding_is_required(tmp_path):
     witness = create(tmp_path/'witness.sqlite3')
     request = reserve_request()

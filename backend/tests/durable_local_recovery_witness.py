@@ -258,7 +258,8 @@ class DurableLocalRecoveryWitness:
     @contextmanager
     def _connect(self):
         self._validate_private_path()
-        db = sqlite3.connect(self.path, timeout=2, isolation_level=None)
+        db = sqlite3.connect(self.path.absolute().as_uri() + '?mode=rw',
+            uri=True, timeout=2, isolation_level=None)
         try:
             with db:
                 db.row_factory = sqlite3.Row
