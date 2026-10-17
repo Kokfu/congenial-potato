@@ -661,6 +661,91 @@ def test_client_rejects_oversized_request_before_connect(tmp_path):
         client.request({'operation':'reserve', 'payload':'x'*20000})
 
 
+def test_client_rejects_unbounded_or_invalid_timeout_before_socket_creation(tmp_path, monkeypatch):
+    def unexpected_socket(*args, **kwargs):
+        pytest.fail('invalid client timeout reached socket creation')
+
+    monkeypatch.setattr(transport_module.socket, 'socket', unexpected_socket)
+    for bad in (None, True, False, 0, -1, float('nan'), float('inf'),
+                float('-inf'), '1', [], 3, 10**1000):
+        with pytest.raises(WitnessTransportDenied, match='timeout'):
+            UnixWitnessClient(tmp_path/'absent.sock', caller_id=CALLER,
+                key=CALLER_KEY, timeout=bad)
+
+
+@pytest.mark.parametrize('delays,accepted,committed', [
+    ((0.2, 0.2, 0.2), True, True), ((0.6, 0.2, 0.3), False, True),
+    ((1.1, 0, 0), False, False), ((0.6, 0.6, 0), False, False),
+], ids=['within-budget', 'reply-after-shared-budget', 'connect-budget', 'send-budget'])
+def test_client_shares_transport_budget_and_preserves_unknown_consume(tmp_path, monkeypatch, delays, accepted, committed):
+    witness = DurableLocalRecoveryWitness(tmp_path/'state.sqlite3',
+        caller_keys={CALLER: CALLER_KEY}, state_key=STATE_KEY, initialize=True)
+    reserve = {'operation': 'reserve', 'request_id': str(uuid4()),
+        'ledger_id': str(uuid4()), 'invocation_id': str(uuid4()), 'intent_sha256': 'a'*64}
+    ticket = witness.reserve(caller_id=CALLER, request=reserve,
+        mac=request_mac(CALLER_KEY, CALLER, reserve))['body']
+    consume = {'operation': 'consume', **{k: v for k, v in ticket.items() if k != 'status'}}
+    clock = SimpleNamespace(now=0.0)
+    monkeypatch.setattr(transport_module, 'time', SimpleNamespace(monotonic=lambda: clock.now))
+
+    class DelayedPeer:
+        timeout = None
+        closed = False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.closed = True
+
+        def settimeout(self, value):
+            self.timeout = value
+
+        def gettimeout(self):
+            return self.timeout
+
+        def elapse(self, delay):
+            if self.timeout is not None and delay > self.timeout:
+                clock.now += self.timeout
+                raise TimeoutError('controlled peer exceeded socket budget')
+            clock.now += delay
+
+        def connect(self, path):
+            self.elapse(delays[0])
+
+        def sendall(self, payload):
+            self.elapse(delays[1])
+            frame = json.loads(payload)
+            self.reply = witness.consume(caller_id=frame['caller_id'],
+                caller_key_id=frame['caller_key_id'], request=frame['request'],
+                mac=frame['mac'], exchange_nonce=frame['exchange_nonce'])
+
+        def recv(self, size):
+            self.elapse(delays[2])
+            return json.dumps(self.reply).encode('ascii') + b'\n'
+
+    peer = DelayedPeer()
+    monkeypatch.setattr(transport_module.socket, 'socket', lambda *args: peer)
+    client = UnixWitnessClient(tmp_path/'controlled.sock', caller_id=CALLER,
+        key=CALLER_KEY, timeout=1)
+    if accepted:
+        assert client.request(consume)['status'] == 'spent'
+    else:
+        with pytest.raises(WitnessTransportDenied):
+            client.request(consume)
+    assert peer.closed
+    assert clock.now <= 1.0
+    # A response deadline never revokes a consume already committed by the peer.
+    with sqlite3.connect(witness.path) as db:
+        assert db.execute('SELECT consumed FROM reservations').fetchall() == [(int(committed),)]
+        events = [('reserved',), ('consumed',)] if committed else [('reserved',)]
+        assert db.execute('SELECT event FROM witness_events ORDER BY sequence').fetchall() == events
+    if committed:
+        with pytest.raises(WitnessDenied, match='already consumed'):
+            witness.consume(caller_id=CALLER, request=consume,
+                mac=request_mac(CALLER_KEY, CALLER, consume))
+
+
 def test_server_config_rejects_duplicate_and_unexpected_fields(tmp_path):
     config_path = tmp_path/'server-config.json'
     duplicate = '{"socket_path":"first","socket_path":"second"}'
