@@ -1028,6 +1028,78 @@ def test_server_does_not_unlink_a_replacement_socket_after_stale_probe(tmp_path,
             assert path.exists()
 
 
+@pytest.mark.parametrize('stage', ['construction', 'start'])
+@pytest.mark.parametrize('failure', [RuntimeError, OSError])
+def test_listener_thread_startup_failure_releases_endpoint(tmp_path, monkeypatch, stage, failure):
+    witness = DurableLocalRecoveryWitness(tmp_path/'state.sqlite3',
+        caller_keys={CALLER: CALLER_KEY}, state_key=STATE_KEY, initialize=True)
+    path = tmp_path/'witness.sock'
+    server = LocalWitnessUnixServer(witness, path)
+    before = witness.path.read_bytes()
+    sockets = []
+
+    def fail():
+        sockets.append(server._socket)
+        raise failure('injected listener thread failure')
+
+    class FailedThread:
+        def __init__(self, **kwargs):
+            if stage == 'construction':
+                fail()
+
+        def start(self):
+            fail()
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(transport_module.threading, 'Thread', FailedThread)
+            with pytest.raises(WitnessTransportDenied, match='startup'):
+                server.start()
+        assert sockets and all(sock.fileno() == -1 for sock in sockets)
+        assert not path.exists()
+        server.close()  # No join of an unstarted thread; cleanup remains idempotent.
+        assert witness.path.read_bytes() == before
+        with LocalWitnessUnixServer(witness, path):
+            client = UnixWitnessClient(path, caller_id=CALLER, key=CALLER_KEY)
+            assert client.request({'operation': 'generation'})['generation'] == 1
+        assert witness.path.read_bytes() == before
+    finally:
+        for sock in sockets:
+            sock.close()
+
+
+def test_failed_listener_startup_preserves_replacement_socket(tmp_path, monkeypatch):
+    witness = DurableLocalRecoveryWitness(tmp_path/'state.sqlite3',
+        caller_keys={CALLER: CALLER_KEY}, state_key=STATE_KEY, initialize=True)
+    path = tmp_path/'witness.sock'
+    server = LocalWitnessUnixServer(witness, path)
+    sockets = []
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as replacement:
+        class FailedThread:
+            def __init__(self, **kwargs):
+                pass
+
+            def start(self):
+                sockets.append(server._socket)
+                path.unlink()
+                replacement.bind(str(path))
+                raise RuntimeError('injected replacement during thread startup')
+
+        try:
+            with monkeypatch.context() as patch:
+                patch.setattr(transport_module.threading, 'Thread', FailedThread)
+                with pytest.raises(WitnessTransportDenied, match='startup'):
+                    server.start()
+            identity = path.lstat()
+            assert sockets[0].fileno() == -1
+            server.close()
+            after = path.lstat()
+            assert (after.st_dev, after.st_ino) == (identity.st_dev, identity.st_ino)
+        finally:
+            for sock in sockets:
+                sock.close()
+
+
 def test_frame_receive_budget_does_not_restart_for_each_chunk(monkeypatch):
     clock = SimpleNamespace(now=0.0)
     monkeypatch.setattr(transport_module, 'time', SimpleNamespace(monotonic=lambda: clock.now), raising=False)
