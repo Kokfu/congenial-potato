@@ -1,8 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { ownerPassword, workspaceOrigin } from "./workspace";
 
 test("project activity reconnects from a persisted cursor", async ({ page }) => {
-  const password = readFileSync("../.local/initial_admin_password", "utf8").trim();
+  const password = ownerPassword();
   await page.goto("/");
   await page.getByLabel("Owner password").fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -12,7 +12,7 @@ test("project activity reconnects from a persisted cursor", async ({ page }) => 
   expect(csrf).toBeTruthy();
   const post = async (path: string, body: unknown) => {
     const response = await page.request.post(path, {
-      data: body, headers: { Origin: "http://localhost:8080", "X-CSRF-Token": csrf! },
+      data: body, headers: { Origin: workspaceOrigin, "X-CSRF-Token": csrf! },
     });
     expect(response.ok(), `${path}: ${await response.text()}`).toBeTruthy();
     return response.json();

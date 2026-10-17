@@ -2,6 +2,8 @@
 
 A private, self-hosted foundation for persistent agents, projects, tasks and controlled execution. The current worker runs **synthetic fixture results only**. Read [progress.md](progress.md) for completed work and next tasks, and [the architecture](docs/README.md) for the approved design.
 
+For a separate local workspace that automatically chooses a free port, use `python3 scripts/local_workspace.py start` (`py` on Windows). Follow the [local workspace guide](docs/local-workspace-guide.md) for prerequisites, your private owner-password file, first-use walkthrough and data-preserving stop/restart. The [MVP completion plan](docs/mvp-completion-plan.md) tracks the practical user-facing milestones. This launcher leaves the default Compose project separate and does not enable paid models or real external effects.
+
 ## Local Compose startup
 
 Requires Docker Engine 28+ with the Linux bridge driver and Docker Compose. Create local secret files outside Git, then start:
