@@ -233,8 +233,16 @@ class LocalWitnessUnixServer:
             server.close()
             raise WitnessTransportDenied('witness socket unavailable') from None
         self._socket = server
-        self._thread = threading.Thread(target=self._serve, daemon=True)
-        self._thread.start()
+        try:
+            self._thread = threading.Thread(target=self._serve, daemon=True)
+            self._thread.start()
+        except (RuntimeError, OSError):
+            self._stop.set()
+            server.close()
+            self._socket = None
+            self._thread = None
+            self._remove_owned_socket_path()
+            raise WitnessTransportDenied('witness listener startup unavailable') from None
         return self
 
     def _serve(self):
@@ -292,6 +300,9 @@ class LocalWitnessUnixServer:
                 if remaining <= 0:
                     raise WitnessTransportDenied('witness in-flight dispatch remains unknown')
                 self._dispatch_condition.wait(timeout=remaining)
+        self._remove_owned_socket_path()
+
+    def _remove_owned_socket_path(self):
         try:
             info = self.socket_path.lstat()
             if (stat.S_ISSOCK(info.st_mode) and
