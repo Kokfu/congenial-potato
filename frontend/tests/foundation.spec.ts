@@ -74,6 +74,32 @@ test("owner can create project, grant a fixture agent, and review completed task
       return versions.length;
     })
     .toBe(1);
+  await page.getByRole("button", { name: "Artifacts", exact: true }).click();
+  const content = page.getByLabel("Artifact content");
+  const expectedContent = `Synthetic result for execution ${executionId}`;
+  await expect(content).toHaveText(expectedContent);
+  await expect(page.getByRole("heading", { name: "Version 1", exact: true })).toBeVisible();
+  await expect(page.locator(".artifact-detail dd").first()).toHaveText(/^[a-f0-9]{64}$/);
+  await page.route("**/api/artifacts/versions/**", (route) => route.fulfill({
+    status: 503, contentType: "application/json",
+    body: JSON.stringify({ detail: "Artifact bytes unavailable (test fault)" }),
+  }));
+  await page.getByRole("button", { name: "Reload outputs" }).click();
+  await expect(page.getByRole("alert")).toContainText("Artifact bytes unavailable");
+  await expect(content).toHaveCount(0);
+  await page.unroute("**/api/artifacts/versions/**");
+  await page.getByRole("button", { name: "Reload outputs" }).click();
+  await expect(content).toHaveText(expectedContent);
+  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  const emptyProject = `Empty output project ${suffix}`;
+  await page.getByPlaceholder("New project name").fill(emptyProject);
+  await page.getByRole("button", { name: "Create project" }).click();
+  await expect(page.getByRole("button", { name: emptyProject, exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Artifacts", exact: true }).click();
+  await expect(page.getByText("No approved outputs for this project yet.")).toBeVisible();
+  await expect(content).toHaveCount(0);
+  await page.getByLabel("Output project").selectOption({ label: project });
+  await expect(content).toHaveText(expectedContent);
   await page.getByRole("button", { name: "Agents", exact: true }).click();
   await page.getByLabel(`Provider for ${agent}`).selectOption("fixture-beta");
   await agentRow.getByRole("button", { name: "Update provider" }).click();

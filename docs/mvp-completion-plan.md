@@ -24,4 +24,6 @@ Each bounded increment updates this plan and `progress.md`, records commands/res
 ## Execution ledger
 
 - Milestones 1–2 implemented and validated in the managed Linux workspace: ten launcher checks, successful project-specific builds/startup, four real browser cases, isolated egress denial and preserved project/agent/artifact counts plus login across stop/start. See [actual commands/results and limits](research/mvp-local-launch-validation.md). Actual owner-PC hosting remains unverified.
-- Owner-PC OS clarification requested while independent implementation continues. Actual PC hosting remains unverified until the launcher runs there.
+- Milestones 3–4 now have an artifact reader, complete owner walkthrough, real-application screenshot and five passing browser cases covering actual approval-to-output plus explicit rendering/failure/late-response fixtures. See [artifact UI evidence](research/mvp-artifact-browser-validation.md). The prior restart/egress checks remain separate; no full-backend release guarantee is claimed.
+- Owner confirmed Windows with Docker Desktop. The guide provides exact PowerShell clone/start commands, automatically selects a free port, and preserves the owner's other project. Actual PC hosting remains unverified until the launcher runs there; this cloud session has no PC connection.
+- Next: owner-side Windows startup/walkthrough acceptance, then define one useful document-to-plan-to-draft workflow and complete the live-model prerequisites in milestone 5 without enabling paid calls or production connections.

@@ -89,6 +89,25 @@ nav em {
   overflow-wrap: anywhere;
   font-size: 0.8rem;
 }
+.artifact-detail {
+  margin-top: 24px;
+}
+.artifact-detail dd {
+  margin: 4px 0 14px;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.artifact-detail dt {
+  color: #728078;
+  font-size: 12px;
+}
+.artifact-detail pre {
+  padding: 18px;
+  background: #f5f7f4;
+  border-radius: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .foot {
   margin-top: auto;
   padding: 12px;

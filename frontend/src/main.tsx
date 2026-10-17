@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { CollaborationReview } from "./CollaborationReview";
 import { ToolReview } from "./ToolReview";
 import { ActivityTimeline } from "./ActivityTimeline";
+import { ArtifactBrowser } from "./ArtifactBrowser";
 import "./style.css";
 
 type Project = { id: string; name: string; objective: string };
@@ -25,8 +26,8 @@ type Approval = {
   payload_hash: string;
   content: string;
 };
-type Tab = "Projects" | "Agents" | "Approvals" | "Collaboration" | "Activity" | "Settings";
-const tabs: Tab[] = ["Projects", "Agents", "Approvals", "Collaboration", "Activity", "Settings"];
+type Tab = "Projects" | "Agents" | "Approvals" | "Artifacts" | "Collaboration" | "Activity" | "Settings";
+const tabs: Tab[] = ["Projects", "Agents", "Approvals", "Artifacts", "Collaboration", "Activity", "Settings"];
 const csrf = () =>
   decodeURIComponent(
     document.cookie
@@ -545,6 +546,10 @@ function App() {
           </section>
           <ToolReview projectId={projectId} api={api} onError={setMessage} />
           </>
+        )}
+        {tab === "Artifacts" && (
+          <ArtifactBrowser key={projectId} projectId={projectId} projects={projects}
+            onProjectChange={setProjectId} api={api} />
         )}
         {tab === "Collaboration" && (
           <CollaborationReview
