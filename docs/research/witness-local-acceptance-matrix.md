@@ -1,6 +1,6 @@
-# Local witness acceptance matrix: Phase 8.4bo
+# Local witness acceptance matrix: Phase 8.4bp
 
-Date: 2026-10-17. Branch: `phase-8-witness-sqlite-connection-lifecycle`. Parent: draft PR [#138](https://github.com/Kokfu/congenial-potato/pull/138), commit `4a2e547e3bbab250d018fe9cd698df15fe9490fb`.
+Date: 2026-10-17. Branch: `phase-8-witness-no-create-open`. Parent: draft PR [#139](https://github.com/Kokfu/congenial-potato/pull/139), commit `484353d067597127320307a0a9dc6696dd65ea39`.
 
 This is the current local synthetic checkpoint. The fixture protocol, same-host transport and fake-ledger drills do not constitute an independent recovery service or product activation. Expected rollback and caller-effect limitations are recorded separately below.
 
@@ -12,7 +12,7 @@ This is the current local synthetic checkpoint. The fixture protocol, same-host 
 
 The [fixed local checker](witness-local-check-command.md) tests the checkout directly, isolates pytest options/plugins/configuration, excludes PostgreSQL conftest loading and compiles selected files to a temporary directory. Dependency setup is documented with that command.
 
-The latest six-module local runtime check is Phase 8.4bo: **157 local cases passed in 6.48s**, **65 product Python files passed the static fixture-import guard**, and **15 files compiled**. Separately, Phase 8.4bd passed **6 PostgreSQL-backed witness restore-wrapper cases in 9.76s** (three direct and three Unix-RPC), after fresh application/workflow migrations; see [RPC cases and limits](witness-postgres-rpc-restore-validation.md) and [database setup](witness-postgres-restore-wrapper-validation.md). The local command was rerun after fixing missing-key/empty-MAC authentication; see [authentication fix](witness-missing-auth-key-denial-validation.md) and [guard coverage](witness-admission-import-guard-validation.md). Collection-only inspection verified the exact six-module, 157-case inventory; changed-document links plus `git diff --check` passed.
+The latest six-module local runtime check is Phase 8.4bp: **164 local cases passed in 5.57s**, **65 product Python files passed the static fixture-import guard**, and **15 files compiled**. Separately, Phase 8.4bd passed **6 PostgreSQL-backed witness restore-wrapper cases in 9.76s** (three direct and three Unix-RPC), after fresh application/workflow migrations; see [RPC cases and limits](witness-postgres-rpc-restore-validation.md) and [database setup](witness-postgres-restore-wrapper-validation.md). The local command was rerun after fixing missing-key/empty-MAC authentication; see [authentication fix](witness-missing-auth-key-denial-validation.md) and [guard coverage](witness-admission-import-guard-validation.md). Collection-only inspection verified the exact six-module, 164-case inventory; changed-document links plus `git diff --check` passed.
 
 Phase 8.4be additionally passed the **complete 34-case admission file in 55.79s**, including those six restore cases and migration safeguards; see [admission regression checkpoint](witness-admission-regression-checkpoint.md). These counts overlap and must not be added together.
 
@@ -26,15 +26,17 @@ Phase 8.4bn subsequently reran the complete admission file after initialization-
 
 Phase 8.4bo then passed seven focused PostgreSQL cases in 11.45s after the connection lifecycle change, with fresh migrations, 65 source checks and verified cleanup. See [resource lifecycle evidence](witness-sqlite-connection-lifecycle-validation.md). The 35-case full admission result above predates this change.
 
+Phase 8.4bp passed seven focused PostgreSQL cases in 11.32s after existing-file-only opens, with fresh migrations, 65 source checks and label-verified cleanup. See [open-mode evidence and race limits](witness-no-create-open-validation.md). Full admission was not rerun.
+
 | Collected module | Cases |
 | --- | ---: |
-| [Durable protocol](../../backend/tests/test_durable_local_recovery_witness.py) | 63 |
+| [Durable protocol](../../backend/tests/test_durable_local_recovery_witness.py) | 70 |
 | [Fake-ledger recovery](../../backend/tests/test_durable_witness_fake_ledger_recovery.py) | 13 |
 | [Local transport/process lifecycle](../../backend/tests/test_durable_local_witness_transport.py) | 47 |
 | [Pending-snapshot audit rollback](../../backend/tests/test_witness_pending_snapshot_audit_rollback.py) | 1 |
 | [Response parsing/binding/contracts](../../backend/tests/test_witness_rpc_response_validation.py) | 24 |
 | [In-memory protocol regressions](../../backend/tests/test_synthetic_write_recovery_witness.py) | 9 |
-| **Total** | **157** |
+| **Total** | **164** |
 
 ## Current fixture behavior and evidence
 
@@ -51,6 +53,7 @@ Phase 8.4bo then passed seven focused PostgreSQL cases in 11.45s after the conne
 | Consume ticket shape | Malformed authenticated MAC fields deny without consuming a pending ticket; valid consume and replay fencing remain intact | [Ticket MAC validation](witness-ticket-mac-validation.md) |
 | Initialization mode | Direct constructor requires exact boolean; invalid modes neither create missing state nor alter retained state | [Explicit initialization](witness-initialization-mode-validation.md) |
 | SQLite resources | Explicit close after transaction completion/setup failure; rollback preserves pending consumption on injected failure | [Connection lifecycle](witness-sqlite-connection-lifecycle-validation.md) |
+| Missing-state open | SQLite existing-file-only mode denies an injected deletion after path validation without recreating state; URI-sensitive names retain exact paths | [Open mode](witness-no-create-open-validation.md) |
 | Endpoint startup | Active/uncertain socket refusal, stable stale-path inode check, authenticated process readiness | [Socket guard](witness-socket-liveness-guard-validation.md) |
 | Local receive/load | Monotonic frame receive budget, 32 active-handler cap and slot recovery | [Receive deadline](witness-frame-receive-deadline-validation.md), [capacity](witness-connection-cap-validation.md) |
 | Stop/drain | Late-frame denial, atomic stop/admission, counted synchronous method drain, explicit unknown on drain expiry | [Stop gate](witness-stop-dispatch-gate-validation.md), [dispatch drain](witness-dispatch-drain-validation.md) |
