@@ -12,6 +12,7 @@ from uuid import uuid4
 
 import pytest
 
+import durable_local_recovery_witness as witness_module
 from durable_local_recovery_witness import (DurableLocalRecoveryWitness,
     WitnessDenied, request_mac, verify_response)
 
@@ -145,6 +146,90 @@ def create(path):
 def reopen(path):
     return DurableLocalRecoveryWitness(path, caller_keys={CALLER: CALLER_KEY},
         state_key=STATE_KEY, advance_callers={CALLER})
+
+
+def track_connections(monkeypatch):
+    connect = sqlite3.connect
+    connections = []
+
+    def tracked(*args, **kwargs):
+        db = connect(*args, **kwargs)
+        connections.append(db)  # Retain handles so GC cannot conceal a missing close.
+        return db
+
+    monkeypatch.setattr(witness_module.sqlite3, 'connect', tracked)
+    return connections
+
+
+def assert_connections_closed(connections):
+    assert connections
+    for db in connections:
+        with pytest.raises(sqlite3.ProgrammingError, match='closed database'):
+            db.execute('SELECT 1')
+
+
+def test_connections_close_after_startup_success_retry_and_denial(tmp_path, monkeypatch):
+    connections = track_connections(monkeypatch)
+    witness = create(tmp_path/'witness.sqlite3')
+    assert_connections_closed(connections)
+    witness = reopen(witness.path)
+    assert_connections_closed(connections)
+    assert call(witness, {'operation': 'generation'})['generation'] == 1
+    request = reserve_request()
+    ticket = call(witness, request)
+    assert call(witness, request) == ticket
+    assert call(witness, consume_request(ticket))['status'] == 'spent'
+    with pytest.raises(WitnessDenied, match='already consumed'):
+        call(witness, consume_request(ticket))
+    advance = {'operation': 'advance', 'request_id': str(uuid4())}
+    assert call(witness, advance)['generation'] == 2
+    assert call(witness, advance)['generation'] == 2
+    assert_connections_closed(connections)
+
+
+@pytest.mark.parametrize('failure', [WitnessDenied, sqlite3.OperationalError])
+def test_connections_close_and_roll_back_after_post_update_failure(tmp_path, monkeypatch, failure):
+    witness = create(tmp_path/'witness.sqlite3')
+    ticket = call(witness, reserve_request())
+    connections = track_connections(monkeypatch)
+    record = witness._record
+
+    def fail_record(*args, **kwargs):
+        raise failure('injected event failure after consumed update')
+
+    monkeypatch.setattr(witness, '_record', fail_record)
+    with pytest.raises(WitnessDenied):
+        call(witness, consume_request(ticket))
+    assert_connections_closed(connections)
+    monkeypatch.setattr(witness, '_record', record)
+    # The failed transaction must neither burn the ticket nor emit a consumed event.
+    assert call(witness, consume_request(ticket))['status'] == 'spent'
+    assert_connections_closed(connections)
+    with sqlite3.connect(witness.path) as db:
+        assert db.execute('SELECT event FROM witness_events ORDER BY sequence').fetchall() == [
+            ('reserved',), ('consumed',)]
+
+
+def test_connection_closes_when_pragma_setup_fails(tmp_path, monkeypatch):
+    witness = create(tmp_path/'witness.sqlite3')
+    connect = sqlite3.connect
+    connections = []
+
+    class FailedSetupConnection(sqlite3.Connection):
+        def execute(self, statement, *args, **kwargs):
+            if statement == 'PRAGMA foreign_keys=ON':
+                raise sqlite3.OperationalError('injected setup failure')
+            return super().execute(statement, *args, **kwargs)
+
+    def failed_setup(*args, **kwargs):
+        db = connect(*args, **kwargs, factory=FailedSetupConnection)
+        connections.append(db)
+        return db
+
+    monkeypatch.setattr(witness_module.sqlite3, 'connect', failed_setup)
+    with pytest.raises(WitnessDenied, match='state unavailable'):
+        call(witness, {'operation': 'generation'})
+    assert_connections_closed(connections)
 
 
 def test_reservation_retry_is_idempotent_and_exact_binding_is_required(tmp_path):
