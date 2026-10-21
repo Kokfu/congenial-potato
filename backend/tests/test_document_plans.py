@@ -151,4 +151,3 @@ def test_runtime_document_plan_binds_exact_source_and_only_admits_gated_backlog_
         assert db.scalar(select(func.count()).select_from(Execution)) == before_runs
         assert db.scalar(select(func.count()).select_from(Outbox)) == before_outbox
         assert db.scalar(select(func.count()).select_from(DocumentPlanTask)) == 2
-

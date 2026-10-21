@@ -22,7 +22,7 @@ Collaboration now offers the recorded brief and prepared-prefix information alon
 - All **eight Playwright cases passed in 24.8s** on the actual app. The new case configures a predefined Manager plan fixture with source notes, waits for its runtime proposal, reads the recorded brief/prepared context in Collaboration, admits the exact proposal, checks two backlog tasks and verifies the API 409 plus absence of Run fixture for gated work. Existing artifact/approval, brief editing/conflict, activity, collaboration and tool cases stayed passing. These fixture results do not establish real-model planning quality.
 - Actual admitted-work screenshot: `/workspace/workforce-mvp-document-plan.png`, without mocked API responses. This is a local review artifact, not public hosting.
 - Scoped `scripts/egress_smoke.py` passed: API/worker reached the database and were denied direct/socket/HTTP/proxy/CONNECT/web-forward access to a reachable local synthetic sink. Owned disposable sink resources were removed.
-- Eight changed Python files compiled. Changed Markdown local targets and `git diff --check` passed before commit.
+- Eight changed Python files compiled. Changed Markdown local targets passed. Remote patch inspection caught an extra trailing blank line in the new test file; it was removed before the final whitespace/checkpoint checks. No runtime behavior changed in that cleanup.
 
 ## Limits and next task
 
