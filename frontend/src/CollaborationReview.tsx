@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { RunBriefSource } from "./RunBriefSource";
 
 type Proposal = {
   id: string;
@@ -79,6 +80,12 @@ export function CollaborationReview({ projectId, projectName, api, onError }: Pr
             <div>
               <strong>{proposal.kind}</strong>
               <small>Source execution: {proposal.source_execution_id}</small>
+              {proposal.kind === "plan" && proposal.payload.document_source != null && <>
+                <p>Source-bound document plan. Review the recorded brief and prepared prefix before admitting work.</p>
+                <p className="muted">Admission creates backlog tasks only. Document draft execution remains disabled.</p>
+                <RunBriefSource key={proposal.source_execution_id} executionId={proposal.source_execution_id}
+                  projectId={projectId} api={api} />
+              </>}
               <pre className="proposal-content">{JSON.stringify(proposal.payload, null, 2)}</pre>
               <small>SHA-256 proposal: {proposal.payload_hash}</small>
             </div>

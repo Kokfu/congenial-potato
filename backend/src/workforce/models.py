@@ -283,6 +283,12 @@ class PlanProposal(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class DocumentPlanTask(Base):
+    __tablename__ = 'document_plan_tasks'
+    task_id: Mapped[str] = mapped_column(ForeignKey('tasks.id'), primary_key=True)
+    proposal_id: Mapped[str] = mapped_column(ForeignKey('plan_proposals.id'))
+
+
 class CollaborationProposal(Base):
     __tablename__ = 'collaboration_proposals'
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)

@@ -2,6 +2,7 @@ from dbos import DBOS
 from sqlalchemy import select
 
 from workforce.db import session_factory
+from workforce.config import get_settings
 from workforce.models import AuditEvent, PlanProposal, Task, TaskAssignment, TaskDependency
 from workforce.worker import dispatch_once
 
@@ -32,7 +33,7 @@ def setup_manager(authenticated):
     assert dispatched.status_code == 202
     execution_id = dispatched.json()['execution_id']
     DBOS(config={'name': 'workforce-test',
-                 'system_database_url': 'postgresql://postgres:phase1fixture@127.0.0.1:55433/workforce_dbos_test',
+                 'system_database_url': get_settings().workflow_url,
                  'application_version': 'usage-normalization-v1'})
     DBOS.launch()
     try:

@@ -22,6 +22,7 @@ from .providers import ProviderError
 from .activity import record_activity
 from .project_briefs import add_version, router as brief_router
 from .execution_briefs import BriefSourceError, attach_source, current_version, router as source_router
+from .models import DocumentPlanTask
 
 app = FastAPI(title='Workforce control plane', docs_url=None, redoc_url=None)
 app.include_router(brief_router)
@@ -153,7 +154,10 @@ def list_tasks(project_id: str, _: OwnerSession = Depends(current_session), db: 
     if db.get(Project, project_id) is None:
         raise HTTPException(404, 'Project not found')
     rows = db.scalars(select(Task).where(Task.project_id == project_id).order_by(Task.created_at, Task.id)).all()
-    return [{'id': row.id, 'title': row.title, 'status': row.status, 'revision': row.revision} for row in rows]
+    bound = dict(db.execute(select(DocumentPlanTask.task_id, DocumentPlanTask.proposal_id)
+        .join(Task, DocumentPlanTask.task_id == Task.id).where(Task.project_id == project_id)).all())
+    return [{'id': row.id, 'title': row.title, 'status': row.status, 'revision': row.revision,
+             'document_plan_id': bound.get(row.id)} for row in rows]
 
 
 @app.post('/api/tasks', status_code=201)
@@ -208,6 +212,8 @@ def dispatch(task_id: str, data: DispatchInput, session: OwnerSession = Depends(
     hint = db.get(Task, task_id)
     if hint is None:
         raise HTTPException(404, 'Resource not found')
+    if db.get(DocumentPlanTask, task_id) is not None:
+        raise HTTPException(409, 'Document plan draft execution is not enabled')
     try:
         source = current_version(db, hint.project_id, data.expected_brief_revision)
     except BriefSourceError as exc:

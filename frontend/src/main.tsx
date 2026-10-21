@@ -19,7 +19,7 @@ type Agent = {
 };
 type Catalog = { connection_id: string; models: { model_id: string }[] };
 type AgentConfig = { versions: { version: number; instructions: string }[] };
-type Task = { id: string; title: string; status: string };
+type Task = { id: string; title: string; status: string; document_plan_id?: string | null };
 type Approval = {
   id: string;
   resource: string;
@@ -319,7 +319,8 @@ function App() {
                     </div>
                     <div className="actions">
                       <span className="badge">{t.status}</span>
-                      {t.status === "backlog" && agents.length > 0 && (
+                      {t.document_plan_id && <small>Document draft execution is not enabled.</small>}
+                      {t.status === "backlog" && !t.document_plan_id && agents.length > 0 && (
                         <button
                           className="quiet"
                           onClick={() =>

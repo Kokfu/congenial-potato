@@ -12,10 +12,10 @@ from workforce.models import (AuditEvent, CollaborationProposal, Execution,
 from workforce.worker import dispatch_once
 
 
-def source_fixture(authenticated, candidate, role='Manager'):
+def source_fixture(authenticated, candidate, role='Manager', objective=''):
     headers = {'Origin': 'http://localhost:8080',
                'X-CSRF-Token': authenticated.cookies['workforce_csrf']}
-    project = authenticated.post('/api/projects', json={'name': 'Runtime collaboration'},
+    project = authenticated.post('/api/projects', json={'name': 'Runtime collaboration', 'objective': objective},
                                  headers=headers).json()
     target = authenticated.post('/api/agents', json={
         'name': 'Target', 'role': 'specialist', 'instructions': 'Synthetic',

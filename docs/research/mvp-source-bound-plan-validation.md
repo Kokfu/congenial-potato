@@ -1,0 +1,31 @@
+# Source-bound document plan review
+
+Date: 2026-10-22. Branch: `mvp-source-bound-plan-review`. Parent: draft PR [#149](https://github.com/Kokfu/congenial-potato/pull/149), commit `fe5c33697b755a1b6e9bb28933c5fda2dad7ce8b`.
+
+## Implementation
+
+This increment extends the existing bounded Manager plan and collaboration admission path. A runtime plan candidate from a nonempty pinned source receives server-derived `document_source` metadata before the pending proposal hash is calculated: project, brief revision/digest, prepared-message digest/policy, included/total source characters and truncation. The untrusted model contract still forbids that field, so candidate output cannot assert source authority. Direct owner plan proposals derive the same binding; any explicitly supplied binding must match it.
+
+Exact owner review covers tasks and source/context identity. Admission rechecks recorded source bytes/context, current brief revision, existing project plan revision, successful Manager source, grants, assignees, work keys and graph rules. A later brief edit denies admission without creating partial work. Repeated successful admission returns history and does not create more tasks. Old pending runtime candidates without the binding are not silently rebound at decision time; a new candidate/review is needed. Empty/unpinned legacy generic plans keep their existing behavior and make no document-source claim.
+
+Admitted source-bound plans create only backlog tasks and a persistent task-to-plan association. They create no execution or outbox event. The source-bound draft path is not implemented yet: the dispatch API refuses those tasks, and Projects shows the gate instead of a Run fixture button. This prevents an ordinary new-root dispatch from silently replacing the reviewed source with later notes. The next increment must explicitly carry admitted plan/source/context into a fixture draft before opening that path.
+
+Collaboration now offers the recorded brief and prepared-prefix information alongside the exact proposal. The workflow is still a predefined structured fixture response through the existing API, not substantive generated planning or a one-click plan generator in the UI.
+
+## Actual validation
+
+- `/tmp/check-document-plans.py` used the existing pinned disposable PostgreSQL image on a uniquely labeled internal network with tmpfs storage, no published ports and no host mounts. Legacy objective backfill, empty-new-table downgrade/upgrade and `alembic check` passed with no metadata drift. Ownership-checked cleanup removed the disposable database/container/network.
+- `pytest -q -x -p no:cacheprovider backend/tests/test_project_briefs.py backend/tests/test_foundation.py backend/tests/test_activity.py backend/tests/test_task_graph.py backend/tests/test_runtime_collaboration.py backend/tests/test_schedule_dispatch.py backend/tests/test_execution_briefs.py backend/tests/test_memory_context.py backend/tests/test_brief_context.py backend/tests/test_plans.py backend/tests/test_document_plans.py` passed **69 tests in 47.41s**.
+- Ten new document-plan cases cover exact runtime binding, pending-before-review state, hash mismatch denial, idempotent admission, gated backlog association with unchanged execution/outbox counts, stale brief rejection and owner rejection, cyclic graphs, invalid assignee scope, revoked grants, forbidden model-supplied binding, changed prepared data, direct-owner binding derivation/forgery/wrong-project denial, truncated-prefix identity and legacy pending-candidate refusal. Parameterized cases are included in the ten count.
+- After the focused tests, downgrade intentionally raised `Cannot erase source-bound plan task history`; association rows remained readable. This expected refusal is separate from the pytest count. `test_plans.py` now honors the configured workflow database URL instead of a hard-coded port; its existing assertions remain unchanged.
+- `npm run build` passed TypeScript/Vite with 21 modules. Owned backend/web image builds used the public CA bundle as a build secret with TLS verification enabled. `python scripts/local_workspace.py start --no-build` migrated and reconciled the retained fixture stack on loopback port 52113; database/API/web were healthy and worker running.
+- All **eight Playwright cases passed in 24.8s** on the actual app. The new case configures a predefined Manager plan fixture with source notes, waits for its runtime proposal, reads the recorded brief/prepared context in Collaboration, admits the exact proposal, checks two backlog tasks and verifies the API 409 plus absence of Run fixture for gated work. Existing artifact/approval, brief editing/conflict, activity, collaboration and tool cases stayed passing. These fixture results do not establish real-model planning quality.
+- Actual admitted-work screenshot: `/workspace/workforce-mvp-document-plan.png`, without mocked API responses. This is a local review artifact, not public hosting.
+- Scoped `scripts/egress_smoke.py` passed: API/worker reached the database and were denied direct/socket/HTTP/proxy/CONNECT/web-forward access to a reachable local synthetic sink. Owned disposable sink resources were removed.
+- Eight changed Python files compiled. Changed Markdown local targets and `git diff --check` passed before commit.
+
+## Limits and next task
+
+Source bindings, preparation and task associations share the replaceable application database; they are not independent attestation, rollback protection, actual provider-use proof or protected-infrastructure acceptance. Predefined fixture JSON does not establish semantic plan quality or factual citations. No draft execution, cited output generation or real effects are enabled by plan admission.
+
+Next: an explicitly requested fixture draft run that preserves the admitted plan/source/context identity, followed by exact approval of a cited synthetic output. Protected credentials, verified pricing, unknown-charge handling and separately authorized live activation remain future gates. No full backend/witness/launcher suite or actual Windows Docker Desktop acceptance is claimed. Paid/live activation, product external dispatch, real effects, production connections, public deployment and merges remain disabled.
