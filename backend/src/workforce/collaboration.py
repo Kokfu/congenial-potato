@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from .delegation import DelegationInput, delegate
 from .messages import MessageInput, send_message
 from .models import AuditEvent, CollaborationProposal, Execution, Task
-from .plans import PlanInput, PlanTask, admit, propose
+from .plans import PlanError, PlanInput, PlanTask, admit, propose, document_source
 from .activity import record_activity
 
 MAX_PROPOSAL_BYTES = 16384
@@ -88,7 +88,11 @@ def record_candidate(db: Session, execution: Execution,
     project_id = db.get(Task, execution.task_id).project_id
     try:
         payload = parse_candidate(content)
-    except CollaborationError as exc:
+        if payload['kind'] == 'plan':
+            binding = document_source(db, execution.id)
+            if binding is not None:
+                payload['document_source'] = binding
+    except (CollaborationError, PlanError) as exc:
         db.add(AuditEvent(actor=execution.agent_id, action='collaboration.parse',
                           resource=execution.id, outcome='denied',
                           effect_key=f'collaboration.parse:{execution.id}',
@@ -130,16 +134,20 @@ def decide_candidate(db: Session, proposal_id: str, expected_hash: str,
     if execution.cancelled or execution.status != 'succeeded':
         raise CollaborationError('source_unavailable')
     try:
-        payload = CANDIDATES[row.kind].model_validate(row.payload)
+        candidate = dict(row.payload)
+        binding = candidate.pop('document_source', None) if row.kind == 'plan' else None
+        payload = CANDIDATES[row.kind].model_validate(candidate)
     except (KeyError, ValidationError) as exc:
         raise CollaborationError('invalid_contract') from exc
     if not approved:
         row.status = 'rejected'
     elif isinstance(payload, PlanCandidate):
+        if binding != document_source(db, execution.id):
+            raise CollaborationError('source_binding_changed')
         data = PlanInput(source_execution_id=execution.id,
                          proposal_key=payload.proposal_key,
                          expected_revision=payload.expected_revision,
-                         tasks=payload.tasks)
+                         tasks=payload.tasks, document_source=binding)
         plan, _ = propose(db, row.project_id, data, owner_id)
         admitted = admit(db, plan.id, plan.payload_hash, owner_id)
         row.admitted_ref = admitted.id

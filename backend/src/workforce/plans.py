@@ -1,11 +1,13 @@
 """Deterministic admission of small, synthetic Manager plan candidates."""
 import hashlib
 import json
+from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Agent, AuditEvent, Execution, PlanProposal, Project, Task, TaskDependency
+from .models import Agent, AuditEvent, DocumentPlanTask, Execution, PlanProposal, Project, Task, TaskDependency
+from .execution_briefs import BriefSourceError, source_record
 from .services import AccessDenied, authorize_agent_project
 from .task_assignment import assign_executor
 
@@ -18,12 +20,26 @@ class PlanTask(BaseModel):
     depends_on: list[str] = Field(default_factory=list, max_length=11)
 
 
+class DocumentSource(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    kind: Literal['document-source.v1'] = 'document-source.v1'
+    project_id: str = Field(min_length=1, max_length=36)
+    brief_revision: int = Field(ge=1)
+    brief_digest: str = Field(pattern=r'^[a-f0-9]{64}$')
+    context_digest: str = Field(pattern=r'^[a-f0-9]{64}$')
+    context_policy: Literal['untrusted-project-brief.v1']
+    included_characters: int = Field(ge=0, le=20000)
+    total_characters: int = Field(ge=1, le=20000)
+    truncated: bool
+
+
 class PlanInput(BaseModel):
     model_config = ConfigDict(extra='forbid')
     source_execution_id: str
     proposal_key: str = Field(pattern=r'^[a-z0-9][a-z0-9-]{0,99}$')
     expected_revision: int = Field(ge=1)
     tasks: list[PlanTask] = Field(min_length=1, max_length=12)
+    document_source: DocumentSource | None = None
 
 
 class PlanError(ValueError):
@@ -36,6 +52,25 @@ def plan_hash(payload: dict) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
+def document_source(db: Session, execution_id: str) -> dict | None:
+    execution = db.get(Execution, execution_id)
+    if execution is None:
+        raise PlanError('source_unavailable')
+    try:
+        source = source_record(db, execution)
+    except BriefSourceError as exc:
+        raise PlanError('source_context_unavailable') from exc
+    if source['status'] == 'unpinned' or not source['content']:
+        return None
+    context = source['context']
+    if context is None:
+        raise PlanError('source_context_unprepared')
+    return DocumentSource(project_id=source['project_id'], brief_revision=source['revision'],
+        brief_digest=source['digest'], context_digest=context['message_digest'],
+        context_policy=context['policy'], included_characters=context['included_characters'],
+        total_characters=context['total_characters'], truncated=context['truncated']).model_dump(mode='json')
+
+
 def validate_plan(db: Session, project_id: str, data: PlanInput) -> None:
     execution = db.get(Execution, data.source_execution_id)
     if execution is None or execution.status != 'succeeded' or execution.cancelled:
@@ -45,6 +80,12 @@ def validate_plan(db: Session, project_id: str, data: PlanInput) -> None:
     if source_task is None or source_task.project_id != project_id or agent is None or agent.role.lower() != 'manager':
         raise PlanError('source_scope')
     authorize_agent_project(db, agent.id, project_id, 'project.execute')
+    binding = document_source(db, execution.id)
+    supplied = data.document_source.model_dump(mode='json') if data.document_source else None
+    if supplied != binding:
+        raise PlanError('source_binding_changed')
+    if binding is not None and db.get(Project, project_id).brief_revision != binding['brief_revision']:
+        raise PlanError('source_brief_changed')
     keys = [item.work_key for item in data.tasks]
     if len(set(keys)) != len(keys):
         raise PlanError('duplicate_work_key')
@@ -78,10 +119,17 @@ def validate_plan(db: Session, project_id: str, data: PlanInput) -> None:
 
 
 def propose(db: Session, project_id: str, data: PlanInput, owner_id: str) -> tuple[PlanProposal, bool]:
-    project = db.execute(select(Project).where(Project.id == project_id).with_for_update()).scalar_one_or_none()
+    project = db.execute(select(Project).where(Project.id == project_id).with_for_update()
+                         .execution_options(populate_existing=True)).scalar_one_or_none()
     if project is None:
         raise PlanError('project_missing')
-    payload = data.model_dump(mode='json')
+    binding = document_source(db, data.source_execution_id)
+    if data.document_source is not None and data.document_source.model_dump(mode='json') != binding:
+        raise PlanError('source_binding_changed')
+    payload = data.model_dump(mode='json', exclude_none=True)
+    if binding is not None:
+        payload['document_source'] = binding
+    data = PlanInput.model_validate(payload)
     digest = plan_hash(payload)
     existing = db.scalar(select(PlanProposal).where(
         PlanProposal.source_execution_id == data.source_execution_id,
@@ -111,7 +159,8 @@ def admit(db: Session, proposal_id: str, expected_hash: str, owner_id: str) -> P
     candidate = db.get(PlanProposal, proposal_id)
     if candidate is None:
         raise PlanError('proposal_missing')
-    project = db.execute(select(Project).where(Project.id == candidate.project_id).with_for_update()).scalar_one()
+    project = db.execute(select(Project).where(Project.id == candidate.project_id).with_for_update()
+                         .execution_options(populate_existing=True)).scalar_one()
     proposal = db.execute(select(PlanProposal).where(PlanProposal.id == proposal_id).with_for_update()
                           .execution_options(populate_existing=True)).scalar_one()
     if proposal.payload_hash != expected_hash or plan_hash(proposal.payload) != expected_hash:
@@ -132,6 +181,8 @@ def admit(db: Session, proposal_id: str, expected_hash: str, owner_id: str) -> P
                           outcome='allowed', detail={'agent_id': assignment.agent_id,
                                                      'proposal_id': proposal.id}))
         tasks[item.work_key] = task
+        if data.document_source is not None:
+            db.add(DocumentPlanTask(task_id=task.id, proposal_id=proposal.id))
     for item in data.tasks:
         for prerequisite in item.depends_on:
             db.add(TaskDependency(project_id=project.id,
