@@ -289,6 +289,13 @@ class DocumentPlanTask(Base):
     proposal_id: Mapped[str] = mapped_column(ForeignKey('plan_proposals.id'))
 
 
+class DocumentDraftRun(Base):
+    __tablename__ = 'document_draft_runs'
+    execution_id: Mapped[str] = mapped_column(ForeignKey('executions.id'), primary_key=True)
+    proposal_id: Mapped[str] = mapped_column(ForeignKey('plan_proposals.id'))
+    plan_digest: Mapped[str] = mapped_column(String(64))
+
+
 class CollaborationProposal(Base):
     __tablename__ = 'collaboration_proposals'
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)

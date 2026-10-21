@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from typing import Literal, Protocol
 
 from pydantic import BaseModel, Field
+from .document_draft_contract import FixtureDocument, render_document_fixture
 
 
 class ProviderErrorKind(StrEnum):
@@ -63,6 +64,7 @@ class GenerationRequest(BaseModel):
     require_tools: bool = False
     require_structured_output: bool = False
     deadline_at: datetime | None = None
+    fixture_document: FixtureDocument | None = None
 
     @property
     def input_text(self) -> str:
@@ -157,12 +159,14 @@ class FakeAdapter:
         self._validate(request)
         if self._failure_kind is not None:
             raise ProviderError(self._failure_kind, 'Synthetic provider failure')
-        return GenerationResponse(content=f'Synthetic result for execution {request.request_id}',
+        content = (render_document_fixture(request.fixture_document) if request.fixture_document
+                   else f'Synthetic result for execution {request.request_id}')
+        return GenerationResponse(content=content,
                                   actual_model=request.model_id,
                                   provider_request_id=f'fixture:{self.connection_id}:{request.request_id}',
                                   finish_reason='stop',
                                   usage=Usage(input_tokens=len(request.input_text) // 4 + 1,
-                                              output_tokens=8, reported_cost_usd=None))
+                                              output_tokens=(len(content) // 4 + 1 if request.fixture_document else 8), reported_cost_usd=None))
 
     def stream(self, request: GenerationRequest) -> Iterator[StreamEvent]:
         response = self.generate(request)

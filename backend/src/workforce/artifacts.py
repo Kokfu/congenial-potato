@@ -13,6 +13,8 @@ from sqlalchemy import select
 from .config import get_settings
 from .models import Approval, ArtifactVersion, AuditEvent, Execution, ModelCall, Project, Task, now
 from .services import AccessDenied, authorize_agent_project
+from .document_drafts import DocumentDraftError, fixture_for_run
+from .document_draft_contract import render_document_fixture
 
 SCHEMA_HASH = hashlib.sha256(b'fixture-artifact-v1:artifact_id,project_id,content,mime_type,expected_parent').hexdigest()
 PAYLOAD_KEYS = {'artifact_id', 'project_id', 'content', 'mime_type', 'expected_parent'}
@@ -67,7 +69,10 @@ def proposal_valid(db, approval: Approval) -> bool:
         return False
     try:
         authorize_agent_project(db, execution.agent_id, task.project_id, 'project.execute')
-    except AccessDenied:
+        document = fixture_for_run(db, execution)
+        if document and payload['content'] != render_document_fixture(document):
+            return False
+    except (AccessDenied, DocumentDraftError):
         return False
     if approval.expires_at <= now():
         return False

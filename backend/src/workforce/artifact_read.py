@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 from .config import get_settings
 from .models import ArtifactVersion, Execution, Task
 from .services import authorize_agent_project
+from .document_drafts import DocumentDraftError, fixture_for_run
+from .document_draft_contract import render_document_fixture
 
 
 class ArtifactIntegrityError(RuntimeError):
@@ -45,6 +47,13 @@ def read_version(db: Session, *, project_id: str, version_id: str,
         raise ArtifactIntegrityError('Artifact bytes unavailable') from exc
     if len(content) != row.size or hashlib.sha256(content).hexdigest() != row.digest:
         raise ArtifactIntegrityError('Artifact storage integrity failed')
+    if row.execution_id is not None:
+        try:
+            document = fixture_for_run(db, execution, authority=False)
+            if document and content != render_document_fixture(document).encode():
+                raise DocumentDraftError('Saved draft differs from reviewed references')
+        except DocumentDraftError as exc:
+            raise ArtifactIntegrityError('Document draft provenance changed') from exc
     return row, content
 
 

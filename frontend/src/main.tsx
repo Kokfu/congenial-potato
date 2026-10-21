@@ -19,7 +19,8 @@ type Agent = {
 };
 type Catalog = { connection_id: string; models: { model_id: string }[] };
 type AgentConfig = { versions: { version: number; instructions: string }[] };
-type Task = { id: string; title: string; status: string; document_plan_id?: string | null };
+type Task = { id: string; title: string; status: string; revision: number; document_plan_id?: string | null;
+  document_plan_hash?: string | null; document_source_revision?: number | null };
 type Approval = {
   id: string;
   resource: string;
@@ -319,7 +320,15 @@ function App() {
                     </div>
                     <div className="actions">
                       <span className="badge">{t.status}</span>
-                      {t.document_plan_id && <small>Document draft execution is not enabled.</small>}
+                      {t.document_plan_id && <small>Uses reviewed brief revision {t.document_source_revision}; later notes are not substituted.</small>}
+                      {t.status === "backlog" && t.document_plan_hash && <button className="quiet"
+                        onClick={() => act(() => api(`/api/tasks/${t.id}/draft-fixture`, {
+                          method: "POST", body: JSON.stringify({ plan_payload_hash: t.document_plan_hash, root_cap: "1.00" }),
+                        }))}>Run reviewed draft fixture</button>}
+                      {t.status === "review" && t.document_plan_id && <button className="quiet"
+                        onClick={() => act(() => api(`/api/tasks/${t.id}/accept`, {
+                          method: "POST", body: JSON.stringify({ expected_revision: t.revision }),
+                        }))}>Accept reviewed draft task</button>}
                       {t.status === "backlog" && !t.document_plan_id && agents.length > 0 && (
                         <button
                           className="quiet"

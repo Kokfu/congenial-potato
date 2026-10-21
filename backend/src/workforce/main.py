@@ -23,6 +23,10 @@ from .activity import record_activity
 from .project_briefs import add_version, router as brief_router
 from .execution_briefs import BriefSourceError, attach_source, current_version, router as source_router
 from .models import DocumentPlanTask
+from .models import DocumentDraftRun, ExecutionBriefContext, TaskAssignment
+from .models import PlanProposal
+from .document_drafts import DocumentDraftError, checked_plan, require_text_fixture
+from .execution_briefs import checked_version
 
 app = FastAPI(title='Workforce control plane', docs_url=None, redoc_url=None)
 app.include_router(brief_router)
@@ -154,10 +158,15 @@ def list_tasks(project_id: str, _: OwnerSession = Depends(current_session), db: 
     if db.get(Project, project_id) is None:
         raise HTTPException(404, 'Project not found')
     rows = db.scalars(select(Task).where(Task.project_id == project_id).order_by(Task.created_at, Task.id)).all()
-    bound = dict(db.execute(select(DocumentPlanTask.task_id, DocumentPlanTask.proposal_id)
-        .join(Task, DocumentPlanTask.task_id == Task.id).where(Task.project_id == project_id)).all())
+    bound = {task_id: (proposal_id, digest, payload['document_source']['brief_revision'])
+        for task_id, proposal_id, digest, payload in db.execute(select(
+            DocumentPlanTask.task_id, DocumentPlanTask.proposal_id, PlanProposal.payload_hash, PlanProposal.payload)
+        .join(PlanProposal, DocumentPlanTask.proposal_id == PlanProposal.id)
+        .join(Task, DocumentPlanTask.task_id == Task.id).where(Task.project_id == project_id)).all()}
     return [{'id': row.id, 'title': row.title, 'status': row.status, 'revision': row.revision,
-             'document_plan_id': bound.get(row.id)} for row in rows]
+             'document_plan_id': bound[row.id][0] if row.id in bound else None,
+             'document_plan_hash': bound[row.id][1] if row.id in bound else None,
+             'document_source_revision': bound[row.id][2] if row.id in bound else None} for row in rows]
 
 
 @app.post('/api/tasks', status_code=201)
@@ -192,6 +201,11 @@ class DispatchInput(BaseModel):
     root_cap: Decimal = Field(ge=Decimal('0.010000'), max_digits=12, decimal_places=6)
 
 
+class DraftFixtureInput(BaseModel):
+    plan_payload_hash: str = Field(pattern=r'^[a-f0-9]{64}$')
+    root_cap: Decimal = Field(ge=Decimal('0.010000'), max_digits=12, decimal_places=6)
+
+
 @app.post('/api/agents/{agent_id}/grants', status_code=201)
 def set_grant(agent_id: str, data: GrantInput, session: OwnerSession = Depends(require_csrf), db: Session = Depends(db_session)):
     if db.get(Agent, agent_id) is None or db.get(Project, data.project_id) is None:
@@ -209,15 +223,36 @@ def set_grant(agent_id: str, data: GrantInput, session: OwnerSession = Depends(r
 
 @app.post('/api/tasks/{task_id}/dispatch', status_code=202)
 def dispatch(task_id: str, data: DispatchInput, session: OwnerSession = Depends(require_csrf), db: Session = Depends(db_session)):
+    return _dispatch(task_id, data, session, db)
+
+
+@app.post('/api/tasks/{task_id}/draft-fixture', status_code=202)
+def dispatch_draft(task_id: str, data: DraftFixtureInput, session: OwnerSession = Depends(require_csrf), db: Session = Depends(db_session)):
+    assignment = db.scalar(select(TaskAssignment).where(TaskAssignment.task_id == task_id))
+    if assignment is None:
+        raise HTTPException(409, 'Reviewed task assignment is unavailable')
+    return _dispatch(task_id, DispatchInput(agent_id=assignment.agent_id, root_cap=data.root_cap),
+                     session, db, document_hash=data.plan_payload_hash)
+
+
+def _dispatch(task_id, data, session, db, *, document_hash=None):
     hint = db.get(Task, task_id)
     if hint is None:
         raise HTTPException(404, 'Resource not found')
-    if db.get(DocumentPlanTask, task_id) is not None:
+    association = db.get(DocumentPlanTask, task_id)
+    if association is not None and document_hash is None:
         raise HTTPException(409, 'Document plan draft execution is not enabled')
     try:
-        source = current_version(db, hint.project_id, data.expected_brief_revision)
-    except BriefSourceError as exc:
+        if document_hash is not None:
+            db.scalar(select(Project).where(Project.id == hint.project_id).with_for_update())
+            plan, binding, _ = checked_plan(db, hint, document_hash)
+            source = checked_version(db, hint.project_id, binding['brief_revision'], binding['brief_digest'])
+        else:
+            source = current_version(db, hint.project_id, data.expected_brief_revision)
+    except (BriefSourceError, DocumentDraftError) as exc:
         raise HTTPException(409, str(exc)) from exc
+    except AccessDenied as exc:
+        raise HTTPException(403, 'Project access denied') from exc
     task = db.execute(select(Task).where(Task.id == task_id).with_for_update()
                       .execution_options(populate_existing=True)).scalar_one_or_none()
     agent = db.execute(select(Agent).where(Agent.id == data.agent_id).with_for_update()).scalar_one_or_none()
@@ -234,6 +269,11 @@ def dispatch(task_id: str, data: DispatchInput, session: OwnerSession = Depends(
     config = db.scalar(select(AgentConfigVersion).where(AgentConfigVersion.agent_id == data.agent_id).order_by(AgentConfigVersion.version.desc()).limit(1))
     if config is None:
         raise HTTPException(409, 'Agent has no configuration')
+    if document_hash is not None:
+        try:
+            require_text_fixture(config)
+        except DocumentDraftError as exc:
+            raise HTTPException(409, str(exc)) from exc
     try:
         assignment, created = assign_executor(db, task, data.agent_id, session.owner_id)
     except AssignmentError as exc:
@@ -246,6 +286,11 @@ def dispatch(task_id: str, data: DispatchInput, session: OwnerSession = Depends(
     db.flush()
     execution.root_id = execution.id
     attach_source(db, execution, source)
+    if document_hash is not None:
+        db.flush()
+        prepared = db.get(ExecutionBriefContext, plan.source_execution_id)
+        db.add(ExecutionBriefContext(execution_id=execution.id, message=prepared.message, digest=prepared.digest))
+        db.add(DocumentDraftRun(execution_id=execution.id, proposal_id=plan.id, plan_digest=document_hash))
     execution.workflow_id = f'execution:{execution.id}'
     db.add(BudgetAccount(root_id=execution.id, cap=data.root_cap, reserved=Decimal('0'), spent=Decimal('0')))
     db.add(Outbox(kind='execution.dispatch', idempotency_key=execution.workflow_id, payload={'execution_id': execution.id}))

@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { ownerPassword, workspaceOrigin } from "./workspace";
 
-test("owner inspects a source-bound fixture plan and admits only gated backlog work", async ({ page }) => {
+test("owner reviews a plan and explicitly runs a cited fixture draft with exact output approval", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel("Owner password").fill(ownerPassword());
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -60,6 +60,40 @@ test("owner inspects a source-bound fixture plan and admits only gated backlog w
   await page.getByRole("button", { name: "Projects", exact: true }).click();
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   const draft = page.getByText("Prepare a cited draft", { exact: true }).locator("..").locator("..");
-  await expect(draft.getByText("Document draft execution is not enabled.")).toBeVisible();
+  await expect(draft.getByText("Uses reviewed brief revision 1", { exact: false })).toBeVisible();
   await expect(draft.getByRole("button", { name: "Run fixture" })).toHaveCount(0);
+  // Deliberately edit current notes after plan admission; the explicit action uses the reviewed version.
+  await page.getByRole("button", { name: "Edit current brief" }).click();
+  await page.getByLabel("Revised project brief").fill("Later notes must not silently replace the reviewed plan source.");
+  await page.getByRole("button", { name: "Save brief revision" }).click();
+  await expect(page.getByLabel("Saved brief content")).toHaveText("Later notes must not silently replace the reviewed plan source.");
+  const dispatched = page.waitForResponse((response) => response.url().includes('/draft-fixture') && response.status() === 202);
+  await draft.getByRole("button", { name: "Run reviewed draft fixture" }).click();
+  const execution = (await (await dispatched).json() as { execution_id: string }).execution_id;
+  await expect.poll(async () => {
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    return draft.getByText("review", { exact: true }).count();
+  }).toBe(1);
+  await page.getByRole("button", { name: "Approvals" }).click();
+  const proposal = page.locator('.row').filter({ hasText: '# Synthetic document draft' })
+    .filter({ hasText: planned[0].document_plan_id! });
+  await expect(proposal).toContainText('[S1]');
+  await expect(proposal).toContainText('brief revision 1');
+  await expect(proposal).not.toContainText('Later notes must not silently replace');
+  const unapproved = await (await page.request.get(`/api/artifacts?project_id=${project.id}`)).json() as unknown[];
+  expect(unapproved).toHaveLength(0);
+  await proposal.getByRole('button', { name: 'Approve artifact' }).click();
+  await expect.poll(async () => (await (await page.request.get(`/api/artifacts?project_id=${project.id}`)).json()).length).toBe(1);
+  await page.getByRole('button', { name: 'Artifacts', exact: true }).click();
+  await page.getByLabel('Output project').selectOption(project.id);
+  await expect(page.getByLabel('Artifact content')).toContainText('# Synthetic document draft');
+  await expect(page.getByLabel('Artifact content')).toContainText('Prepared context SHA-256:');
+  await page.getByText('Recorded source brief · revision 1', { exact: true }).click();
+  await expect(page.getByLabel('Run source content')).toHaveText(notes);
+  const recorded = await (await page.request.get(`/api/executions/${execution}/brief`)).json() as { revision: number };
+  expect(recorded.revision).toBe(1);
+  await page.getByRole('button', { name: 'Projects', exact: true }).click();
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await draft.getByRole('button', { name: 'Accept reviewed draft task' }).click();
+  await expect(draft.getByText('completed', { exact: true })).toBeVisible();
 });
