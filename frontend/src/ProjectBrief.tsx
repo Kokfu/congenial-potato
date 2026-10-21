@@ -54,7 +54,7 @@ export function ProjectBrief({ projectId, api, onSaved }: Props) {
   const current = brief && brief.revision === versions[0]?.revision;
   return <section className="project-brief" aria-label="Selected project brief">
     <h3>Saved project brief</h3>
-    <p className="muted">Owner reference only. Briefs are not used by fixture runs.</p>
+    <p className="muted">Source notes are quoted as untrusted data in bounded fixture context. Outputs remain synthetic.</p>
     <button className="quiet" disabled={saving} onClick={() => setReload((n) => n + 1)}>Reload brief history</button>
     {error && <p role="alert" className="error">{error}</p>}
     {versions.length > 0 && <label className="run-agent">

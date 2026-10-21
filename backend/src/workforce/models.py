@@ -72,6 +72,17 @@ class ExecutionBriefSource(Base):
     digest: Mapped[str] = mapped_column(String(64))
 
 
+class ExecutionBriefContext(Base):
+    __tablename__ = 'execution_brief_contexts'
+    __table_args__ = (
+        CheckConstraint('char_length(message) <= 6000', name='ck_brief_context_size'),
+    )
+    execution_id: Mapped[str] = mapped_column(ForeignKey('execution_brief_sources.execution_id'), primary_key=True)
+    message: Mapped[str] = mapped_column(Text)
+    digest: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class ProjectActivityCursor(Base):
     __tablename__ = 'project_activity_cursors'
     project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'), primary_key=True)

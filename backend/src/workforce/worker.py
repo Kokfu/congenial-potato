@@ -20,6 +20,8 @@ from .providers import GenerationRequest, GenerationResponse, ProviderError, Tex
 from .governed_call import governed_generate, price_for
 from .schedule_dispatch import schedule_due_once
 from .activity import record_activity
+from .execution_briefs import BriefSourceError, source_record
+from .brief_context import BriefContextError, prepare_context, SOURCE_INSTRUCTION
 
 RESERVATION = Decimal('0.010000')
 SCHEDULE_TICK = 'workforce-daily-tick-v1'
@@ -41,7 +43,7 @@ def release_reservation(db, execution: Execution) -> None:
 @DBOS.step()
 def generate_step(execution_id: str) -> dict:
     with session_factory()() as db:
-        execution = db.get(Execution, execution_id)
+        execution = db.scalar(select(Execution).where(Execution.id == execution_id).with_for_update())
         config = db.get(AgentConfigVersion, execution.config_version_id)
         task = db.get(Task, execution.task_id)
         if execution.cancelled:
@@ -53,6 +55,14 @@ def generate_step(execution_id: str) -> dict:
         context = build_context(db, project_id=task.project_id, agent_id=execution.agent_id)
         messages = [TextMessage(role='system', trust_origin='human', text=config.instructions),
                     TextMessage(role='user', trust_origin='human', text=task.title)]
+        try:
+            source = source_record(db, execution)
+            source_message = prepare_context(db, execution_id, source, config.provider_connection)
+        except (BriefSourceError, BriefContextError):
+            return {'error': 'policy_denied', 'retryable': False}
+        if source_message:
+            messages.append(TextMessage(role='system', trust_origin='human', text=SOURCE_INSTRUCTION))
+            messages.append(TextMessage(role='user', trust_origin='external', text=source_message))
         if context:
             messages.append(TextMessage(role='user', trust_origin='external', text=context))
         request = GenerationRequest(request_id=execution_id, model_id=config.model_id,
@@ -66,6 +76,7 @@ def generate_step(execution_id: str) -> dict:
             price = price_for(config)
         except (AccessDenied, ValueError):
             return {'error': 'policy_denied', 'retryable': False}
+        db.commit()
     # Release the policy-read transaction before the priced path rechecks and
     # locks the grant; holding both sessions would deadlock on the same row.
     try:

@@ -248,7 +248,7 @@ function App() {
                   />
                 </label>
                 <p className="muted" id="brief-help">
-                  Up to 20,000 characters. Saved for owner reference; fixture runs do not use this brief.
+                  Up to 20,000 characters. Fixture models may receive a bounded quoted prefix; outputs remain synthetic.
                   Keep passwords and credentials out of source notes.
                 </p>
                 <button>Create project</button>
