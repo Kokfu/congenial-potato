@@ -35,7 +35,7 @@ def test_queued_run_keeps_exact_source_through_edits_and_duplicate_dispatch(auth
     source = authenticated.get(f'/api/executions/{execution}/brief').json()
     assert source == {'status': 'pinned', 'project_id': project, 'revision': 1,
         'digest': sha256('Original source 🌱'.encode()).hexdigest(),
-        'content': 'Original source 🌱', 'used_in_model_context': False}
+        'content': 'Original source 🌱', 'context': None}
     assert authenticated.put(f'/api/projects/{project}/brief', json={
         'expected_revision': 1, 'content': 'New source'}, headers=headers).status_code == 200
     assert dispatch(authenticated, task, agent, headers).status_code == 409

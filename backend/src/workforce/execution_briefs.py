@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from .db import db_session
 from .models import Execution, ExecutionBriefSource, OwnerSession, Project, ProjectBriefVersion, Task
 from .security import current_session
+from .brief_context import BriefContextError, preparation_metadata
 
 router = APIRouter()
 
@@ -59,8 +60,13 @@ def source_record(db: Session, execution: Execution) -> dict:
     if source.project_id != db.get(Task, execution.task_id).project_id:
         raise BriefSourceError('Recorded source brief project mismatch')
     version = checked_version(db, source.project_id, source.revision, source.digest)
-    return {'status': 'pinned', 'project_id': source.project_id, 'revision': source.revision,
-            'digest': source.digest, 'content': version.content, 'used_in_model_context': False}
+    result = {'status': 'pinned', 'project_id': source.project_id, 'revision': source.revision,
+              'digest': source.digest, 'content': version.content}
+    try:
+        result['context'] = preparation_metadata(db, execution.id, result)
+    except BriefContextError as exc:
+        raise BriefSourceError(str(exc)) from exc
+    return result
 
 
 @router.get('/api/executions/{execution_id}/brief')

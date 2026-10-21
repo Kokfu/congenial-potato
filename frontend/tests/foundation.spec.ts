@@ -86,6 +86,7 @@ test("owner can create project, grant a fixture agent, and review completed task
   await expect(content).toHaveText(expectedContent);
   await page.getByText("Recorded source brief · revision 1", { exact: true }).click();
   await expect(page.getByLabel("Run source content")).toHaveText(sourceBrief);
+  await expect(page.getByLabel("Prepared source context")).toContainText("Context prepared for fixture generation");
   await expect(page.getByRole("heading", { name: "Version 1", exact: true })).toBeVisible();
   await expect(page.locator(".artifact-detail dd").first()).toHaveText(/^[a-f0-9]{64}$/);
   await page.route("**/api/artifacts/versions/**", (route) => route.fulfill({
