@@ -4,6 +4,7 @@ import { CollaborationReview } from "./CollaborationReview";
 import { ToolReview } from "./ToolReview";
 import { ActivityTimeline } from "./ActivityTimeline";
 import { ArtifactBrowser } from "./ArtifactBrowser";
+import { ProjectBrief } from "./ProjectBrief";
 import "./style.css";
 
 type Project = { id: string; name: string; objective: string };
@@ -264,16 +265,7 @@ function App() {
                 ))}
               </div>
               {projectId && (
-                <section className="project-brief" aria-label="Selected project brief">
-                  <h3>Saved project brief</h3>
-                  {projects.find((p) => p.id === projectId)?.objective ? (
-                    <pre aria-label="Saved brief content">
-                      {projects.find((p) => p.id === projectId)?.objective}
-                    </pre>
-                  ) : (
-                    <p className="muted">No brief was saved for this project.</p>
-                  )}
-                </section>
+                <ProjectBrief key={projectId} projectId={projectId} api={api} onSaved={refresh} />
               )}
             </section>
             {projectId && (

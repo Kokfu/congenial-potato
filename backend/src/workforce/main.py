@@ -20,8 +20,10 @@ from .artifact_read import ArtifactIntegrityError, provenance, read_version
 from . import providers
 from .providers import ProviderError
 from .activity import record_activity
+from .project_briefs import add_version, router as brief_router
 
 app = FastAPI(title='Workforce control plane', docs_url=None, redoc_url=None)
+app.include_router(brief_router)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=[urlparse(get_settings().allowed_origin).hostname])
 
 
@@ -94,7 +96,7 @@ def logout(response: Response, session: OwnerSession = Depends(require_csrf), db
 def list_projects(_: OwnerSession = Depends(current_session), db: Session = Depends(db_session)):
     rows = db.scalars(select(Project).order_by(Project.created_at, Project.id)).all()
     return [{'id': row.id, 'name': row.name, 'objective': row.objective,
-             'plan_revision': row.plan_revision} for row in rows]
+             'plan_revision': row.plan_revision, 'brief_revision': row.brief_revision} for row in rows]
 
 
 @app.post('/api/projects', status_code=201)
@@ -102,13 +104,14 @@ def create_project(data: ProjectInput, session: OwnerSession = Depends(require_c
     row = Project(name=data.name, objective=data.objective)
     db.add(row)
     db.flush()
+    add_version(db, row, session.owner_id)
     db.add(ProjectActivityCursor(project_id=row.id, sequence=0))
     db.add(AuditEvent(actor=session.owner_id, action='project.create', resource=row.id, outcome='allowed'))
     record_activity(db, project_id=row.id, actor=session.owner_id,
                     action='project.create', resource=row.id, outcome='allowed')
     db.commit()
     return {'id': row.id, 'name': row.name, 'objective': row.objective,
-            'plan_revision': row.plan_revision}
+            'plan_revision': row.plan_revision, 'brief_revision': row.brief_revision}
 
 
 @app.get('/api/agents')

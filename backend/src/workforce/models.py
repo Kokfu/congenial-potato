@@ -46,7 +46,19 @@ class Project(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     name: Mapped[str] = mapped_column(String(160))
     objective: Mapped[str] = mapped_column(Text, default='')
+    brief_revision: Mapped[int] = mapped_column(Integer, default=1)
     plan_revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ProjectBriefVersion(Base):
+    __tablename__ = 'project_brief_versions'
+    __table_args__ = (CheckConstraint('revision >= 1', name='ck_project_brief_revision'),)
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'), primary_key=True)
+    revision: Mapped[int] = mapped_column(Integer, primary_key=True)
+    content: Mapped[str] = mapped_column(Text)
+    digest: Mapped[str] = mapped_column(String(64))
+    actor: Mapped[str] = mapped_column(String(160))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 

@@ -47,3 +47,43 @@ test("project briefs survive save failures and reload, and stay scoped as litera
   await page.getByRole("button", { name, exact: true }).click();
   await expect(content).toHaveText(brief);
 });
+
+test("two owner tabs retain a stale draft and explicitly rebase while old revisions stay readable", async ({ page, context }) => {
+  const name = `Versioned brief ${Date.now()}`;
+  await page.goto("/");
+  await page.getByLabel("Owner password").fill(ownerPassword());
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByLabel("New project name").fill(name);
+  await page.getByLabel("Project brief (optional)").fill("Original source notes 🌱");
+  await page.getByRole("button", { name: "Create project" }).click();
+  await expect(page.getByLabel("Saved brief content")).toHaveText("Original source notes 🌱");
+  const other = await context.newPage();
+  await other.goto("/");
+  await other.getByRole("button", { name, exact: true }).click();
+  for (const tab of [page, other]) {
+    await tab.getByRole("button", { name: "Edit current brief" }).click();
+  }
+  await page.getByLabel("Revised project brief").fill("Saved from first tab");
+  await other.getByLabel("Revised project brief").fill("Retained draft from second tab");
+  await page.getByRole("button", { name: "Save brief revision" }).click();
+  await expect(page.getByLabel("Saved brief content")).toHaveText("Saved from first tab");
+  await other.getByRole("button", { name: "Save brief revision" }).click();
+  await expect(other.getByRole("alert")).toContainText("Brief changed");
+  await expect(other.getByLabel("Revised project brief")).toHaveValue("Retained draft from second tab");
+  await other.getByRole("button", { name: "Reload brief history" }).click();
+  await expect(other.getByLabel("Saved brief content")).toHaveText("Saved from first tab");
+  await expect(other.getByLabel("Revised project brief")).toHaveValue("Retained draft from second tab");
+  await other.getByRole("button", { name: "Use displayed revision as draft base" }).click();
+  await other.getByRole("button", { name: "Save brief revision" }).click();
+  await expect(other.getByLabel("Saved brief content")).toHaveText("Retained draft from second tab");
+  await other.reload();
+  await other.getByRole("button", { name, exact: true }).click();
+  await expect(other.getByLabel("Saved brief content")).toHaveText("Retained draft from second tab");
+  await other.getByLabel("Brief revision", { exact: true }).selectOption("1");
+  await expect(other.getByLabel("Saved brief content")).toHaveText("Original source notes 🌱");
+  await expect(other.getByRole("button", { name: "Edit current brief" })).toHaveCount(0);
+  await other.getByLabel("Brief revision", { exact: true }).selectOption("2");
+  await expect(other.getByLabel("Saved brief content")).toHaveText("Saved from first tab");
+  await expect(other.locator(".brief-digest code")).toHaveText(/^[a-f0-9]{64}$/);
+  await other.close();
+});

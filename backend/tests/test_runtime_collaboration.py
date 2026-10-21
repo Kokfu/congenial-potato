@@ -1,3 +1,4 @@
+from workforce.config import get_settings
 import json
 
 import pytest
@@ -39,7 +40,7 @@ def source_fixture(authenticated, candidate, role='Manager'):
     assert response.status_code == 202, response.text
     execution_id = response.json()['execution_id']
     DBOS(config={'name': 'workforce-test',
-                 'system_database_url': 'postgresql://postgres:phase1fixture@127.0.0.1:55433/workforce_dbos_test',
+                 'system_database_url': get_settings().workflow_url,
                  'application_version': 'usage-normalization-v1'})
     DBOS.launch()
     try:
