@@ -13,13 +13,13 @@ Check out the branch containing this guide, not the repository's initial `main` 
 For the owner's confirmed Windows + Docker Desktop setup, start Docker Desktop and select **Linux containers** (the WSL 2 backend is suitable). Check `docker version` and `docker compose version` in PowerShell. If you do not have a checkout yet, use a new directory so your other project is left alone:
 
 ```powershell
-git clone --branch mvp-project-briefs https://github.com/Kokfu/congenial-potato.git workforce-local
+git clone --branch mvp-brief-revisions https://github.com/Kokfu/congenial-potato.git workforce-local
 Set-Location workforce-local
 py scripts/local_workspace.py doctor
 py scripts/local_workspace.py start
 ```
 
-The `mvp-project-briefs` branch includes this plan, launcher, artifact UI, readiness fixes and saved project briefs. If that directory already exists, use your existing checkout or choose a different new directory; do not overwrite another project. Actual startup on the owner's Windows machine remains a required owner check because the development session cannot access that PC.
+The `mvp-brief-revisions` branch includes this plan, launcher, artifact UI, readiness fixes and versioned project briefs. If that directory already exists, use your existing checkout or choose a different new directory; do not overwrite another project. Actual startup on the owner's Windows machine remains a required owner check because the development session cannot access that PC.
 
 `doctor` checks Python, a local Linux Docker Engine 28+, Docker Compose v2+, availability of a free loopback port, and any retained workspace files/resource labels. It does not initialize a workspace, start or stop containers, read password contents or print them. A successful diagnosis is a prerequisite check, not proof that your particular Windows networking/build/startup will succeed. You may share its non-secret status/error messages when troubleshooting; keep the password files private.
 
@@ -46,7 +46,7 @@ Only web publishes a port, on `127.0.0.1`. Application/database/worker services 
 ## First useful walkthrough
 
 1. Open the printed URL and sign in with your locally generated owner password.
-2. On Projects, create a project with an optional brief (up to 20,000 characters). The saved brief appears below the project selector and survives reload. Briefs are owner reference only: fixture runs do not consume them. Existing briefs cannot yet be edited. This selects the project for the following grant.
+2. On Projects, create a project with an optional brief (up to 20,000 characters). The saved brief appears below the project selector and survives reload. Briefs are owner reference only: fixture runs do not consume them. Use **Edit current brief** to save a new revision and **Brief revision** to inspect earlier text/digests. If another tab saved first, your draft stays visible: reload history, review the latest saved text, then explicitly use that revision as the draft base before saving again. Cancel discards only your unsaved edit. This selects the project for the following grant.
 3. On Agents, add an agent with a fixture provider/model, then choose **Grant project execution** for that agent.
 4. Return to Projects, choose the agent, add a task, and choose **Run fixture**.
 5. Refresh until the task reaches `review`. This is synthetic background execution, not a live AI answer.

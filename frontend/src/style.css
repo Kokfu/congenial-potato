@@ -188,6 +188,10 @@ h2 {
 .project-brief h3 {
   font-size: 14px;
 }
+.brief-digest {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
 .project-brief pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;

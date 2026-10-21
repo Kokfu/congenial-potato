@@ -1,3 +1,4 @@
+from workforce.config import get_settings
 from concurrent.futures import ThreadPoolExecutor
 
 from sqlalchemy import select
@@ -52,7 +53,7 @@ def test_owner_dependency_api_rejects_cycles_scope_and_late_edges(authenticated)
     from workforce.worker import dispatch_once
     from workforce.artifacts import apply_approved_artifacts
     DBOS(config={'name': 'workforce-test',
-                 'system_database_url': 'postgresql://postgres:phase1fixture@127.0.0.1:55433/workforce_dbos_test',
+                 'system_database_url': get_settings().workflow_url,
                  'application_version': 'usage-normalization-v1'})
     DBOS.launch()
     try:
