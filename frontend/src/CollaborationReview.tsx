@@ -82,7 +82,7 @@ export function CollaborationReview({ projectId, projectName, api, onError }: Pr
               <small>Source execution: {proposal.source_execution_id}</small>
               {proposal.kind === "plan" && proposal.payload.document_source != null && <>
                 <p>Source-bound document plan. Review the recorded brief and prepared prefix before admitting work.</p>
-                <p className="muted">Admission creates backlog tasks only. Document draft execution remains disabled.</p>
+                <p className="muted">Admission creates backlog tasks only. Each reviewed draft fixture requires a separate request and exact output approval.</p>
                 <RunBriefSource key={proposal.source_execution_id} executionId={proposal.source_execution_id}
                   projectId={projectId} api={api} />
               </>}

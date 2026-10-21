@@ -13,13 +13,13 @@ Check out the branch containing this guide, not the repository's initial `main` 
 For the owner's confirmed Windows + Docker Desktop setup, start Docker Desktop and select **Linux containers** (the WSL 2 backend is suitable). Check `docker version` and `docker compose version` in PowerShell. If you do not have a checkout yet, use a new directory so your other project is left alone:
 
 ```powershell
-git clone --branch mvp-source-bound-plan-review https://github.com/Kokfu/congenial-potato.git workforce-local
+git clone --branch mvp-reviewed-draft-fixture https://github.com/Kokfu/congenial-potato.git workforce-local
 Set-Location workforce-local
 py scripts/local_workspace.py doctor
 py scripts/local_workspace.py start
 ```
 
-The `mvp-source-bound-plan-review` branch includes this plan, launcher, artifact UI, readiness fixes, versioned project briefs, recorded run sources, bounded fixture context and source-bound plan review. If that directory already exists, use your existing checkout or choose a different new directory; do not overwrite another project. Actual startup on the owner's Windows machine remains a required owner check because the development session cannot access that PC.
+The `mvp-reviewed-draft-fixture` branch includes this plan, launcher, artifact UI, readiness fixes, versioned project briefs, recorded run sources, bounded fixture context, source-bound plan review and reviewed draft fixtures. If that directory already exists, use your existing checkout or choose a different new directory; do not overwrite another project. Actual startup on the owner's Windows machine remains a required owner check because the development session cannot access that PC.
 
 `doctor` checks Python, a local Linux Docker Engine 28+, Docker Compose v2+, availability of a free loopback port, and any retained workspace files/resource labels. It does not initialize a workspace, start or stop containers, read password contents or print them. A successful diagnosis is a prerequisite check, not proof that your particular Windows networking/build/startup will succeed. You may share its non-secret status/error messages when troubleshooting; keep the password files private.
 
@@ -87,6 +87,8 @@ For the intended source-notes → reviewed plan → cited draft path, see the [d
 
 ## Source-bound document plan checkpoint
 
-A configured Manager collaboration fixture can return a bounded task plan. In Collaboration, inspect the recorded brief, prepared-prefix/truncation information and exact proposal before **Admit proposal**. The server attaches the source binding; model output cannot supply it. Admission rechecks current notes, graph and grants, creates backlog tasks, and starts no draft execution. Projects marks those tasks **Document draft execution is not enabled**; the API enforces the same gate. A later source edit makes a pending document plan stale, requiring a new reviewed proposal rather than silent rebinding.
+A configured Manager collaboration fixture can return a bounded task plan. In Collaboration, inspect the recorded brief, prepared-prefix/truncation information and exact proposal before **Admit proposal**. The server attaches the source binding; model output cannot supply it. Admission rechecks current notes, graph and grants, creates backlog tasks, and starts no draft automatically. In Projects, **Run reviewed draft fixture** explicitly requests one assigned unpriced text fixture with the exact admitted plan hash. The displayed reviewed brief revision is retained even after later notes change. Ordinary Run fixture/API dispatch remains blocked for those tasks. A later source edit makes a pending document plan stale, requiring a new reviewed proposal rather than silent rebinding.
 
-This increment tests predefined plan candidates using fixture configuration through the existing API. There is no one-click substantive plan generator in the UI yet. The ordinary synthetic task/artifact walkthrough remains available; paid/live models remain disabled.
+The plan candidates are predefined fixture configuration through the existing API. There is no one-click substantive plan generator in the UI yet. The ordinary synthetic task/artifact walkthrough remains available; paid/live models remain disabled.
+
+After requesting a reviewed draft fixture, refresh until its task reaches `review`. In Approvals, inspect the **Synthetic document draft**, its quoted source excerpt [S1] and recorded hashes. Approve the exact artifact; in Artifacts, inspect the saved bytes and original reviewed source. Return to Projects, refresh, then choose **Accept reviewed draft task**. Acceptance verifies that the reviewed run has a saved artifact before completing the task and releasing dependencies. Rejected or unresolved output cannot complete this task. Each dependent task needs its own explicit request. These deterministic fixture drafts state unknowns and are not substantive model-written analysis.

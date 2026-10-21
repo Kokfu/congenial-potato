@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from .models import ArtifactVersion, DocumentPlanTask, DocumentDraftRun
+from .artifact_read import read_version, ArtifactIntegrityError
 
 from .db import db_session
 from .models import Approval, AuditEvent, Execution, OwnerSession, Task, TaskAssignment, TaskDependency
@@ -72,6 +74,16 @@ def accept_task(task_id: str, data: AcceptanceInput,
         Approval.status.in_(['pending', 'approved'])).limit(1))
     if unresolved is not None:
         raise HTTPException(409, 'Task has unresolved artifact approval')
+    if db.get(DocumentPlanTask, task_id) is not None:
+        version = db.scalar(select(ArtifactVersion).join(Execution,
+            ArtifactVersion.execution_id == Execution.id).join(DocumentDraftRun,
+            DocumentDraftRun.execution_id == Execution.id).where(Execution.task_id == task_id)
+            .order_by(ArtifactVersion.version.desc()).limit(1))
+        try:
+            if version is None or read_version(db, project_id=task.project_id, version_id=version.id) is None:
+                raise ArtifactIntegrityError('Reviewed draft has no verified saved artifact')
+        except ArtifactIntegrityError as exc:
+            raise HTTPException(409, 'Reviewed draft requires a verified saved artifact') from exc
     task.status = 'completed'
     task.revision += 1
     db.add(AuditEvent(actor=session.owner_id, action='task.accept', resource=task.id,

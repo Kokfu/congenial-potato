@@ -22,6 +22,8 @@ from .schedule_dispatch import schedule_due_once
 from .activity import record_activity
 from .execution_briefs import BriefSourceError, source_record
 from .brief_context import BriefContextError, prepare_context, SOURCE_INSTRUCTION
+from .document_drafts import DocumentDraftError, fixture_for_run
+from .document_draft_contract import render_document_fixture
 
 RESERVATION = Decimal('0.010000')
 SCHEDULE_TICK = 'workforce-daily-tick-v1'
@@ -58,7 +60,8 @@ def generate_step(execution_id: str) -> dict:
         try:
             source = source_record(db, execution)
             source_message = prepare_context(db, execution_id, source, config.provider_connection)
-        except (BriefSourceError, BriefContextError):
+            document = fixture_for_run(db, execution)
+        except (BriefSourceError, BriefContextError, DocumentDraftError, AccessDenied):
             return {'error': 'policy_denied', 'retryable': False}
         if source_message:
             messages.append(TextMessage(role='system', trust_origin='human', text=SOURCE_INSTRUCTION))
@@ -67,7 +70,8 @@ def generate_step(execution_id: str) -> dict:
             messages.append(TextMessage(role='user', trust_origin='external', text=context))
         request = GenerationRequest(request_id=execution_id, model_id=config.model_id,
                                     messages=tuple(messages),
-                                    max_output_tokens=(512 if (config.config or {}).get('output_contract') in ('collaboration.v1', 'memory.v1', 'tool.v1') else 128),
+                                    max_output_tokens=(512 if document or (config.config or {}).get('output_contract') in ('collaboration.v1', 'memory.v1', 'tool.v1') else 128),
+                                    fixture_document=document,
                                     require_structured_output=(config.config or {}).get('output_contract') in ('collaboration.v1', 'memory.v1', 'tool.v1'),
                                     deadline_at=datetime.now(timezone.utc) + timedelta(
                                         seconds=get_settings().model_call_timeout_seconds))
@@ -125,7 +129,10 @@ def complete_step(execution_id: str, result: dict) -> str:
             return 'cancelled'
         try:
             authorize_agent_project(db, execution.agent_id, task.project_id, 'project.execute')
-        except AccessDenied:
+            document = fixture_for_run(db, execution)
+            if document and response.content != render_document_fixture(document):
+                raise DocumentDraftError('Fixture draft content differs from recorded references')
+        except (AccessDenied, DocumentDraftError):
             release_reservation(db, execution)
             execution.status = 'failed'
             task.status = 'failed'
