@@ -1,6 +1,6 @@
-# Local witness acceptance matrix: Phase 8.4bi
+# Local witness acceptance matrix: Phase 8.4bj
 
-Date: 2026-10-17. Branch: `phase-8-witness-missing-auth-key-denial`. Parent: draft PR [#132](https://github.com/Kokfu/congenial-potato/pull/132), commit `79c418569ed9d91f131eb9fc55d8da84f42517d0`.
+Date: 2026-10-17. Branch: `phase-8-witness-auth-postgres-checkpoint`. Parent: draft PR [#133](https://github.com/Kokfu/congenial-potato/pull/133), commit `8534de30226ef74294ec6dd0c92175f4a298c135`.
 
 This is the current local synthetic checkpoint. The fixture protocol, same-host transport and fake-ledger drills do not constitute an independent recovery service or product activation. Expected rollback and caller-effect limitations are recorded separately below.
 
@@ -18,7 +18,9 @@ Phase 8.4be additionally passed the **complete 34-case admission file in 55.79s*
 
 Phase 8.4bf adds an abandoned consume-reply case before PostgreSQL admission: **7 focused cases passed in 11.66s**, including the six restore regressions. PostgreSQL admission/control/audit and the fake-ledger file remain absent after denied retries, while witness consumption persists; see [abandoned reply evidence](witness-postgres-lost-consume-reply-validation.md). That increment did not rerun the full admission file.
 
-The [repository PostgreSQL command](witness-postgres-check-command.md) now reproduces setup/migrations/checks/cleanup. Phase 8.4bg passed its default **7 cases in 15.55s** and full admission **35 cases in 72.76s**, with a 65-file static product import check for each, and verified cleanup on a controlled failure. These are historical PostgreSQL-backed results preceding the Phase 8.4bi authentication fix; PostgreSQL was not rerun for that fix. They include, rather than add to, earlier restore/admission counts.
+The [repository PostgreSQL command](witness-postgres-check-command.md) now reproduces setup/migrations/checks/cleanup. Phase 8.4bg passed its default **7 cases in 15.55s** and full admission **35 cases in 72.76s**, with a 65-file static product import check for each, and verified cleanup on a controlled failure. These are historical PostgreSQL-backed results preceding the Phase 8.4bi authentication fix; the full admission file was not rerun after that fix. They include, rather than add to, earlier restore/admission counts.
+
+Phase 8.4bj reran the default PostgreSQL command after the authentication fix: **7 passed, 28 deselected in 12.72s**, with 65 product-source checks, successful migrations and fixture cleanup. See [current focused PostgreSQL checkpoint](witness-auth-postgres-checkpoint.md). This updates the selected wrapper/RPC/lost-reply cases only; the 35-case whole-file result above remains historical.
 
 | Collected module | Cases |
 | --- | ---: |
