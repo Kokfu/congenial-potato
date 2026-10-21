@@ -11,6 +11,7 @@ from .models import (Agent, AgentConfigVersion, AuditEvent, BudgetAccount,
                      Execution, Outbox, Project, Task)
 from .services import AccessDenied, authorize_agent_project
 from .task_assignment import assign_executor
+from .execution_briefs import BriefSourceError, inherit_source
 
 MAX_DEPTH = 3
 MAX_CHILDREN = 4
@@ -106,6 +107,10 @@ def delegate(db: Session, parent_id: str, data: DelegationInput,
     db.add(child)
     db.flush()
     child.workflow_id = f'execution:{child.id}'
+    try:
+        inherit_source(db, parent, child)
+    except BriefSourceError as exc:
+        raise DelegationError(str(exc)) from exc
     db.add(Outbox(kind='execution.dispatch', idempotency_key=child.workflow_id,
                   payload={'execution_id': child.id}))
     db.add(AuditEvent(actor=owner_id, action='execution.delegate', resource=child.id,

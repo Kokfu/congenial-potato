@@ -12,6 +12,7 @@ from .schedules import latest_due
 from .services import AccessDenied, authorize_agent_project
 from .task_assignment import AssignmentError, assign_executor
 from .activity import record_activity
+from .execution_briefs import current_version, attach_source
 
 
 def _admit(db: Session, schedule: Schedule, instant: datetime) -> bool:
@@ -55,6 +56,7 @@ def _admit(db: Session, schedule: Schedule, instant: datetime) -> bool:
         reason = 'agent_config_missing'
     owner_id = db.scalar(select(Owner.id).limit(1))
     if reason is None:
+        source = current_version(db, schedule.project_id)
         task = Task(project_id=schedule.project_id, title=schedule.title,
                     work_key=due.key)
         db.add(task)
@@ -70,6 +72,7 @@ def _admit(db: Session, schedule: Schedule, instant: datetime) -> bool:
         db.add(execution)
         db.flush()
         execution.root_id = execution.id
+        attach_source(db, execution, source)
         execution.workflow_id = f'execution:{execution.id}'
         db.add(BudgetAccount(root_id=execution.id, cap=Decimal(schedule.root_cap),
                              reserved=Decimal('0'), spent=Decimal('0')))

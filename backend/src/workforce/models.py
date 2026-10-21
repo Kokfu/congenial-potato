@@ -1,7 +1,7 @@
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
-from sqlalchemy import Boolean, CheckConstraint, Computed, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, JSON
+from sqlalchemy import Boolean, CheckConstraint, Computed, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, Numeric, String, Text, UniqueConstraint, JSON
 from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 from .db import Base
@@ -60,6 +60,16 @@ class ProjectBriefVersion(Base):
     digest: Mapped[str] = mapped_column(String(64))
     actor: Mapped[str] = mapped_column(String(160))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ExecutionBriefSource(Base):
+    __tablename__ = 'execution_brief_sources'
+    __table_args__ = (ForeignKeyConstraint(['project_id', 'revision'],
+        ['project_brief_versions.project_id', 'project_brief_versions.revision']),)
+    execution_id: Mapped[str] = mapped_column(ForeignKey('executions.id'), primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(36))
+    revision: Mapped[int] = mapped_column(Integer)
+    digest: Mapped[str] = mapped_column(String(64))
 
 
 class ProjectActivityCursor(Base):
