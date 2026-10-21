@@ -13,13 +13,13 @@ Check out the branch containing this guide, not the repository's initial `main` 
 For the owner's confirmed Windows + Docker Desktop setup, start Docker Desktop and select **Linux containers** (the WSL 2 backend is suitable). Check `docker version` and `docker compose version` in PowerShell. If you do not have a checkout yet, use a new directory so your other project is left alone:
 
 ```powershell
-git clone --branch mvp-brief-revisions https://github.com/Kokfu/congenial-potato.git workforce-local
+git clone --branch mvp-run-brief-pins https://github.com/Kokfu/congenial-potato.git workforce-local
 Set-Location workforce-local
 py scripts/local_workspace.py doctor
 py scripts/local_workspace.py start
 ```
 
-The `mvp-brief-revisions` branch includes this plan, launcher, artifact UI, readiness fixes and versioned project briefs. If that directory already exists, use your existing checkout or choose a different new directory; do not overwrite another project. Actual startup on the owner's Windows machine remains a required owner check because the development session cannot access that PC.
+The `mvp-run-brief-pins` branch includes this plan, launcher, artifact UI, readiness fixes, versioned project briefs and recorded run sources. If that directory already exists, use your existing checkout or choose a different new directory; do not overwrite another project. Actual startup on the owner's Windows machine remains a required owner check because the development session cannot access that PC.
 
 `doctor` checks Python, a local Linux Docker Engine 28+, Docker Compose v2+, availability of a free loopback port, and any retained workspace files/resource labels. It does not initialize a workspace, start or stop containers, read password contents or print them. A successful diagnosis is a prerequisite check, not proof that your particular Windows networking/build/startup will succeed. You may share its non-secret status/error messages when troubleshooting; keep the password files private.
 
@@ -50,7 +50,7 @@ Only web publishes a port, on `127.0.0.1`. Application/database/worker services 
 3. On Agents, add an agent with a fixture provider/model, then choose **Grant project execution** for that agent.
 4. Return to Projects, choose the agent, add a task, and choose **Run fixture**.
 5. Refresh until the task reaches `review`. This is synthetic background execution, not a live AI answer.
-6. On Approvals, inspect the exact proposed artifact content and approve it. Open **Artifacts**, select the project, and inspect the saved version, content, SHA-256 digest, author and execution identity. Use **Reload outputs** after a new approval. Errors are shown rather than substituting unverified content; artifact text is displayed literally rather than executed.
+6. On Approvals, inspect the exact proposed artifact content and approve it. Open **Artifacts**, select the project, and inspect the saved version, content, SHA-256 digest, author and execution identity. Expand **Recorded source brief** to inspect the revision recorded at run admission; later project edits do not replace it. This records source identity only: fixture generation still does not use those notes. Older runs can show that no brief was recorded. Use **Reload outputs** after a new approval. Errors are shown rather than substituting unverified content; artifact text is displayed literally rather than executed.
 7. Inspect Activity and Collaboration for recorded events and proposal review. Settings identifies the fixture-only model mode.
 
 Execution grants and approvals are separate: granting an agent does not approve arbitrary external actions. Paid models, real outbound effects, arbitrary shell/browser tools and production integration remain disabled.

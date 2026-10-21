@@ -21,9 +21,11 @@ from . import providers
 from .providers import ProviderError
 from .activity import record_activity
 from .project_briefs import add_version, router as brief_router
+from .execution_briefs import BriefSourceError, attach_source, current_version, router as source_router
 
 app = FastAPI(title='Workforce control plane', docs_url=None, redoc_url=None)
 app.include_router(brief_router)
+app.include_router(source_router)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=[urlparse(get_settings().allowed_origin).hostname])
 
 
@@ -182,6 +184,7 @@ class GrantInput(BaseModel):
 
 class DispatchInput(BaseModel):
     agent_id: str
+    expected_brief_revision: int | None = Field(default=None, strict=True, ge=1)
     root_cap: Decimal = Field(ge=Decimal('0.010000'), max_digits=12, decimal_places=6)
 
 
@@ -202,7 +205,15 @@ def set_grant(agent_id: str, data: GrantInput, session: OwnerSession = Depends(r
 
 @app.post('/api/tasks/{task_id}/dispatch', status_code=202)
 def dispatch(task_id: str, data: DispatchInput, session: OwnerSession = Depends(require_csrf), db: Session = Depends(db_session)):
-    task = db.execute(select(Task).where(Task.id == task_id).with_for_update()).scalar_one_or_none()
+    hint = db.get(Task, task_id)
+    if hint is None:
+        raise HTTPException(404, 'Resource not found')
+    try:
+        source = current_version(db, hint.project_id, data.expected_brief_revision)
+    except BriefSourceError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    task = db.execute(select(Task).where(Task.id == task_id).with_for_update()
+                      .execution_options(populate_existing=True)).scalar_one_or_none()
     agent = db.execute(select(Agent).where(Agent.id == data.agent_id).with_for_update()).scalar_one_or_none()
     if task is None or agent is None:
         raise HTTPException(404, 'Resource not found')
@@ -228,6 +239,7 @@ def dispatch(task_id: str, data: DispatchInput, session: OwnerSession = Depends(
     db.add(execution)
     db.flush()
     execution.root_id = execution.id
+    attach_source(db, execution, source)
     execution.workflow_id = f'execution:{execution.id}'
     db.add(BudgetAccount(root_id=execution.id, cap=data.root_cap, reserved=Decimal('0'), spent=Decimal('0')))
     db.add(Outbox(kind='execution.dispatch', idempotency_key=execution.workflow_id, payload={'execution_id': execution.id}))

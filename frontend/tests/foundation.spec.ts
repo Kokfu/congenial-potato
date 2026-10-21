@@ -16,6 +16,8 @@ test("owner can create project, grant a fixture agent, and review completed task
     page.getByRole("heading", { name: "Projects", level: 1 }),
   ).toBeVisible();
   await page.getByPlaceholder("New project name").fill(project);
+  const sourceBrief = `Source notes for ${project}`;
+  await page.getByLabel("Project brief (optional)").fill(sourceBrief);
   await page.getByRole("button", { name: "Create project" }).click();
   await expect(page.getByRole("button", { name: project })).toBeVisible();
   await page.getByRole("button", { name: "Agents", exact: true }).click();
@@ -54,6 +56,10 @@ test("owner can create project, grant a fixture agent, and review completed task
     })
     .toBe(1);
   await page.getByRole("button", { name: "Refresh" }).click();
+  await page.getByRole("button", { name: "Edit current brief" }).click();
+  await page.getByLabel("Revised project brief").fill("Edited after the run was admitted");
+  await page.getByRole("button", { name: "Save brief revision" }).click();
+  await expect(page.getByLabel("Saved brief content")).toHaveText("Edited after the run was admitted");
   await page.getByRole("button", { name: "Approvals" }).click();
   const proposal = page
     .getByText(`Synthetic result for execution ${executionId}`, { exact: true })
@@ -78,6 +84,8 @@ test("owner can create project, grant a fixture agent, and review completed task
   const content = page.getByLabel("Artifact content");
   const expectedContent = `Synthetic result for execution ${executionId}`;
   await expect(content).toHaveText(expectedContent);
+  await page.getByText("Recorded source brief · revision 1", { exact: true }).click();
+  await expect(page.getByLabel("Run source content")).toHaveText(sourceBrief);
   await expect(page.getByRole("heading", { name: "Version 1", exact: true })).toBeVisible();
   await expect(page.locator(".artifact-detail dd").first()).toHaveText(/^[a-f0-9]{64}$/);
   await page.route("**/api/artifacts/versions/**", (route) => route.fulfill({

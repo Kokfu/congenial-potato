@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { RunBriefSource } from "./RunBriefSource";
 
 type Version = {
   id: string;
@@ -112,6 +113,8 @@ export function ArtifactBrowser({ projectId, projects, onProjectChange, api }: P
             <dt>Execution</dt><dd>{artifact.execution_id ?? "Not recorded"}</dd>
           </dl>
           <pre aria-label="Artifact content">{artifact.content}</pre>
+          {artifact.execution_id && <RunBriefSource key={artifact.execution_id}
+            executionId={artifact.execution_id} projectId={projectId} api={api} />}
         </article>
       )}
     </section>
