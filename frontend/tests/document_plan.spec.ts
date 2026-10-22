@@ -8,32 +8,20 @@ test("owner reviews a plan and explicitly runs a cited fixture draft with exact 
   await expect(page.getByRole("heading", { name: "Projects", level: 1 })).toBeVisible();
   const csrf = (await page.context().cookies()).find((cookie) => cookie.name === "workforce_csrf")!.value;
   const headers = { Origin: workspaceOrigin, "X-CSRF-Token": csrf };
-  const post = async <T,>(path: string, data: unknown): Promise<T> => {
-    const response = await page.request.post(path, { data, headers });
-    expect(response.ok(), `${path}: ${await response.text()}`).toBeTruthy();
-    return response.json() as Promise<T>;
-  };
   const suffix = Date.now();
   const notes = "Document fixture notes: the review meeting needs an action list. Owners and dates are unknown.";
-  const project = await post<{ id: string }>("/api/projects", { name: `Document plan ${suffix}`, objective: notes });
-  const target = await post<{ id: string }>("/api/agents", {
-    name: `Document target ${suffix}`, role: "specialist", instructions: "Synthetic only",
-    provider_connection: "fixture", model_id: "fake-v1",
-  });
-  // Explicit structured fixture output; this is not a substantive model-generated plan.
-  const candidate = { kind: "plan", proposal_key: `document-${suffix}`, expected_revision: 1, tasks: [
-    { work_key: "draft", title: "Prepare a cited draft", assignee_id: target.id, depends_on: [] },
-    { work_key: "review", title: "Review source citations", assignee_id: target.id, depends_on: ["draft"] },
-  ] };
-  const manager = await post<{ id: string }>("/api/agents", {
-    name: `Document manager ${suffix}`, role: "Manager", instructions: `FIXTURE_COLLAB_JSON:${JSON.stringify(candidate)}`,
-    provider_connection: "fixture-collaboration", model_id: "collaboration-v1", output_contract: "collaboration.v1",
-  });
-  for (const agent of [target, manager]) await post(`/api/agents/${agent.id}/grants`, {
-    project_id: project.id, action: "project.execute", allowed: true,
-  });
-  const task = await post<{ id: string }>("/api/tasks", { project_id: project.id, title: "Propose fixture document plan" });
-  await post(`/api/tasks/${task.id}/dispatch`, { agent_id: manager.id, root_cap: "1.0" });
+  await page.getByLabel("Walkthrough project name").fill(`Document plan ${suffix}`);
+  await page.getByLabel("Walkthrough source notes").fill(notes);
+  const setupResponse = page.waitForResponse(response => response.url().endsWith('/api/document-fixtures') && response.status() === 201);
+  await page.getByRole('button', { name: 'Create document fixture setup' }).click();
+  const setup = await (await setupResponse).json() as { project_id: string; manager_id: string; draft_agent_id: string; task_id: string };
+  const project = { id: setup.project_id };
+  const target = { id: setup.draft_agent_id };
+  await expect(page.getByRole('status')).toContainText('Setup saved.');
+  const unstarted = await (await page.request.get(`/api/tasks?project_id=${project.id}`)).json() as Array<{ status: string }>;
+  expect(unstarted.map(row => row.status)).toEqual(['backlog']);
+  await expect(page.getByLabel('Agent for fixture')).toHaveValue(setup.manager_id);
+  await page.getByRole('button', { name: 'Run fixture', exact: true }).click();
   await expect.poll(async () => (await (await page.request.get(
     `/api/collaboration-proposals?project_id=${project.id}`)).json()).length).toBe(1);
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
@@ -96,4 +84,21 @@ test("owner reviews a plan and explicitly runs a cited fixture draft with exact 
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await draft.getByRole('button', { name: 'Accept reviewed draft task' }).click();
   await expect(draft.getByText('completed', { exact: true })).toBeVisible();
+});
+
+test("fixture setup reports an uncertain failure without automatically retrying", async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('Owner password').fill(ownerPassword());
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  let requests = 0;
+  await page.route('**/api/document-fixtures', async route => {
+    requests += 1;
+    await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ detail: 'Synthetic setup failure' }) });
+  });
+  await page.getByLabel('Walkthrough source notes').fill('Retain these notes after a failure.');
+  await page.getByRole('button', { name: 'Create document fixture setup' }).click();
+  await expect(page.getByRole('status')).toContainText('Refresh and inspect Projects and Agents');
+  await expect(page.getByLabel('Walkthrough source notes')).toHaveValue('Retain these notes after a failure.');
+  await expect(page.getByRole('button', { name: 'Create document fixture setup' })).toBeDisabled();
+  expect(requests).toBe(1);
 });
