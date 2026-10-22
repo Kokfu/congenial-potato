@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "purpose": "offline_preparation_only",
+  "observed_on": "2026-10-22",
+  "live_enabled": false,
+  "executable_price_envelopes": false,
+  "models": [
+    {
+      "provider": "anthropic",
+      "model_id": "claude-sonnet-5-5",
+      "model_source": "https://platform.claude.com/docs/en/models/sonnet-5-5/overview",
+      "pricing_source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "adapter_status": "offline_unregistered",
+      "account_availability_verified": false,
+      "billing_contract_complete": false
+    },
+    {
+      "provider": "openai",
+      "model_id": "gpt-6-luna",
+      "model_source": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+      "pricing_source": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+      "adapter_status": "offline_unregistered",
+      "account_availability_verified": false,
+      "billing_contract_complete": false
+    },
+    {
+      "provider": "google",
+      "model_id": "gemini-3.8-flash",
+      "model_source": "https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash",
+      "pricing_source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "adapter_status": "not_implemented",
+      "account_availability_verified": false,
+      "billing_contract_complete": false
+    },
+    {
+      "provider": "deepseek",
+      "model_id": "deepseek-flash",
+      "model_source": "https://api-docs.deepseek.com/quick_start/pricing",
+      "pricing_source": "https://api-docs.deepseek.com/quick_start/pricing/",
+      "observed_backing_model": "DeepSeek-V4.1-Flash-1017",
+      "immutable_snapshot_verified": false,
+      "adapter_status": "not_implemented",
+      "account_availability_verified": false,
+      "billing_contract_complete": false
+    }
+  ]
+}
