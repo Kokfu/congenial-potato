@@ -43,7 +43,6 @@ def governed_generate(execution_id: str, request: GenerationRequest, price: Pric
         if (estimate.input_tokens > price.max_input_tokens or
                 request.max_output_tokens > price.max_output_tokens):
             raise AccessDenied('Token bound exceeds price envelope')
-        upper = price.upper_bound()
 
     with session_factory()() as db:
         execution = db.execute(select(Execution).where(Execution.id == execution_id).with_for_update()).scalar_one()
@@ -62,6 +61,8 @@ def governed_generate(execution_id: str, request: GenerationRequest, price: Pric
                 hold.status = 'unknown'
                 db.commit()
             return {'error': 'outcome_unknown', 'retryable': False}
+        # Expiry prevents a new dispatch, not recovery of a recorded result/uncertain hold.
+        upper = price.upper_bound()
         hold = reserve_shared_cost(db, execution.root_id, datetime.now(timezone.utc).date(),
                                    key, upper, settings.daily_cap_usd)
         hold.status = 'calling'

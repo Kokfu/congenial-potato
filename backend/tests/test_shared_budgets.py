@@ -97,3 +97,37 @@ def test_price_envelope_requires_fresh_upper_bound_and_unknown_usage():
     assert price.actual_cost(None, 100) is None
     with pytest.raises(AccessDenied, match='expired'):
         price.model_copy(update={'expires_at': observed - timedelta(seconds=1)}).upper_bound()
+
+
+@pytest.mark.parametrize('fault', ['naive_observation', 'naive_expiry', 'future', 'equal', 'reversed'])
+def test_price_observation_window_denies_invalid_evidence(fault):
+    current = datetime.now(timezone.utc)
+    values = dict(observed_at=current - timedelta(seconds=1), expires_at=current + timedelta(days=1))
+    if fault == 'naive_observation':
+        values['observed_at'] = current.replace(tzinfo=None)
+    elif fault == 'naive_expiry':
+        values['expires_at'] = values['expires_at'].replace(tzinfo=None)
+    elif fault == 'future':
+        values['observed_at'] = current + timedelta(hours=1)
+    elif fault == 'equal':
+        values['observed_at'] = values['expires_at']
+    else:
+        values['observed_at'] = values['expires_at'] + timedelta(seconds=1)
+    price = PriceEnvelope(provider_connection='fixture-alpha', model_id='alpha-text-v1',
+        source='synthetic', max_input_tokens=500, max_output_tokens=128,
+        input_usd_per_million=Decimal('1'), output_usd_per_million=Decimal('2'), **values)
+    with pytest.raises(AccessDenied):
+        price.upper_bound()
+
+
+def test_price_observation_compares_instants_and_preserves_historical_settlement():
+    current = datetime.now(timezone.utc)
+    offset = timezone(timedelta(hours=8))
+    price = PriceEnvelope(provider_connection='fixture-alpha', model_id='alpha-text-v1',
+        source='synthetic', observed_at=(current - timedelta(seconds=1)).astimezone(offset),
+        expires_at=current + timedelta(days=1), max_input_tokens=500, max_output_tokens=128,
+        input_usd_per_million=Decimal('1'), output_usd_per_million=Decimal('2'))
+    assert price.upper_bound() == Decimal('0.000756')
+    historical = price.model_copy(update={'expires_at': current - timedelta(seconds=1)})
+    # A held call may finish after expiry; settling its pinned rates is still necessary.
+    assert historical.actual_cost(100, 50) == Decimal('0.000200')

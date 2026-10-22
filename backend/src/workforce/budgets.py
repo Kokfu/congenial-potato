@@ -30,8 +30,15 @@ class PriceEnvelope(BaseModel):
     output_usd_per_million: Decimal = Field(ge=0)
 
     def upper_bound(self) -> Decimal:
-        if self.expires_at.tzinfo is None or self.expires_at <= datetime.now(timezone.utc):
+        current = datetime.now(timezone.utc)
+        if self.expires_at.utcoffset() is None or self.expires_at <= current:
             raise AccessDenied('Price envelope expired')
+        if self.observed_at.utcoffset() is None:
+            raise AccessDenied('Price observation must include a timezone')
+        if self.observed_at >= self.expires_at:
+            raise AccessDenied('Price observation interval is invalid')
+        if self.observed_at > current:
+            raise AccessDenied('Price observation is in the future')
         estimate = (self.max_input_tokens * self.input_usd_per_million +
                     self.max_output_tokens * self.output_usd_per_million) / Decimal(1_000_000)
         if estimate <= 0:
