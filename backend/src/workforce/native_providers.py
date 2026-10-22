@@ -143,7 +143,7 @@ class OpenAITextAdapter(NativeTextAdapter):
         if self._catalog is not None and not refresh:
             return self._catalog
         try:
-            ids = [model.id for model in self._client.models.list().data]
+            ids = [model.id for model in self._client.with_options(max_retries=0).models.list().data]
         except openai.OpenAIError as exc:
             raise _api_error(exc, 'openai') from None
         return self._catalog_from_ids(ids, refresh)
@@ -153,7 +153,8 @@ class OpenAITextAdapter(NativeTextAdapter):
         timeout = _remaining_timeout(request)
         content = [{'role': message.role, 'content': message.text} for message in request.messages]
         try:
-            client = self._client.with_options(timeout=timeout) if timeout is not None else self._client
+            # An injected client can carry SDK defaults; never hide resends below the governed call.
+            client = self._client.with_options(max_retries=0, **({'timeout': timeout} if timeout is not None else {}))
             response = client.responses.create(model=request.model_id, input=content,
                                                       max_output_tokens=request.max_output_tokens,
                                                       store=False)
@@ -186,7 +187,7 @@ class AnthropicTextAdapter(NativeTextAdapter):
         if self._catalog is not None and not refresh:
             return self._catalog
         try:
-            ids = [model.id for model in self._client.models.list().data]
+            ids = [model.id for model in self._client.with_options(max_retries=0).models.list().data]
         except anthropic.AnthropicError as exc:
             raise _api_error(exc, 'anthropic') from None
         return self._catalog_from_ids(ids, refresh)
@@ -200,7 +201,8 @@ class AnthropicTextAdapter(NativeTextAdapter):
         if not messages:
             raise ProviderError(ProviderErrorKind.INVALID_REQUEST, 'User or assistant content required')
         try:
-            client = self._client.with_options(timeout=timeout) if timeout is not None else self._client
+            # An injected client can carry SDK defaults; never hide resends below the governed call.
+            client = self._client.with_options(max_retries=0, **({'timeout': timeout} if timeout is not None else {}))
             kwargs = {'model': request.model_id, 'messages': messages, 'max_tokens': request.max_output_tokens}
             if system:
                 kwargs['system'] = system
