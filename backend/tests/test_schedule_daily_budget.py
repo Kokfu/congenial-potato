@@ -50,7 +50,7 @@ def test_scheduled_and_delegated_calls_compete_for_one_daily_cap(authenticated, 
     assert delegated.status_code == 202, delegated.text
     child_id = delegated.json()['id']
     DBOS(config={'name': 'workforce-test',
-                 'system_database_url': 'postgresql://postgres:phase1fixture@127.0.0.1:55433/workforce_dbos_test',
+                 'system_database_url': get_settings().workflow_url,
                  'application_version': 'usage-normalization-v1'})
     DBOS.launch()
     try:

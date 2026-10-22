@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from threading import Event
+import pytest
 
 from dbos import DBOS
 from sqlalchemy import select
@@ -74,6 +75,90 @@ def launch():
         get_settings().workflow_url,
         'application_version': 'usage-normalization-v1'})
     DBOS.launch()
+
+
+@pytest.mark.parametrize('fault', ['naive_observation', 'naive_expiry', 'future', 'equal', 'reversed'])
+def test_price_config_rejects_invalid_observation_without_new_revision(authenticated, monkeypatch, fault):
+    execution_id = setup_priced_execution(authenticated, monkeypatch, 'fixture-alpha', 'alpha-text-v1')
+    with session_factory()() as db:
+        execution = db.get(Execution, execution_id)
+        config = db.get(AgentConfigVersion, execution.config_version_id)
+        agent_id = config.agent_id
+        envelope = dict(config.config['price_envelope'])
+    current = datetime.now(timezone.utc)
+    if fault == 'naive_observation':
+        envelope['observed_at'] = current.replace(tzinfo=None).isoformat()
+    elif fault == 'naive_expiry':
+        envelope['expires_at'] = (current + timedelta(days=1)).replace(tzinfo=None).isoformat()
+    elif fault == 'future':
+        envelope['observed_at'] = (current + timedelta(hours=1)).isoformat()
+    elif fault == 'equal':
+        envelope['observed_at'] = envelope['expires_at']
+    else:
+        envelope['observed_at'] = (current + timedelta(days=2)).isoformat()
+    headers = {'Origin': 'http://localhost:8080', 'X-CSRF-Token': authenticated.cookies['workforce_csrf']}
+    response = authenticated.put(f'/api/agents/{agent_id}/config', json={
+        'expected_version': 2, 'instructions': 'Synthetic only', 'provider_connection': 'fixture-alpha',
+        'model_id': 'alpha-text-v1', 'price_envelope': envelope}, headers=headers)
+    assert response.status_code == 422, response.text
+    assert len(authenticated.get(f'/api/agents/{agent_id}/config').json()['versions']) == 2
+
+
+def test_future_pinned_price_cannot_acquire_hold_or_reach_adapter(authenticated, monkeypatch):
+    execution_id = setup_priced_execution(authenticated, monkeypatch, 'fixture-alpha', 'alpha-text-v1')
+    with session_factory()() as db:
+        execution = db.get(Execution, execution_id)
+        config = db.get(AgentConfigVersion, execution.config_version_id)
+        raw = {**config.config['price_envelope'],
+            'observed_at': (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()}
+        config.config = {**config.config, 'price_envelope': raw}
+        db.commit()
+        price = price_for(config)
+    def fail_if_called(*args, **kwargs):
+        pytest.fail('Invalid price must not reach provider generation')
+    monkeypatch.setattr(FakeAdapter, 'generate', fail_if_called)
+    from workforce.services import AccessDenied
+    with pytest.raises(AccessDenied, match='future'):
+        governed_generate(execution_id, GenerationRequest(request_id=execution_id,
+            model_id='alpha-text-v1', max_output_tokens=128,
+            messages=(TextMessage(role='user', trust_origin='human', text='Synthetic'),)), price)
+    with session_factory()() as db:
+        assert db.scalar(select(BudgetReservation.id)) is None
+        assert db.scalar(select(DailyBudgetAccount.day)) is None
+        assert db.scalar(select(ModelCall.id)) is None
+        assert db.get(BudgetAccount, execution_id).reserved == 0
+
+
+@pytest.mark.parametrize('outcome', ['settled', 'unknown'])
+def test_expired_price_allows_recorded_outcome_recovery_without_resend(authenticated, monkeypatch, outcome):
+    execution_id = setup_priced_execution(authenticated, monkeypatch, 'fixture-alpha', 'alpha-text-v1')
+    with session_factory()() as db:
+        execution = db.get(Execution, execution_id)
+        price = price_for(db.get(AgentConfigVersion, execution.config_version_id))
+    calls = []
+    original = FakeAdapter.generate
+    def generate(self, request):
+        calls.append(request.request_id)
+        if outcome == 'unknown':
+            raise ProviderError(ProviderErrorKind.TIMEOUT, 'Synthetic response loss')
+        return original(self, request)
+    monkeypatch.setattr(FakeAdapter, 'generate', generate)
+    request = GenerationRequest(request_id=execution_id, model_id='alpha-text-v1', max_output_tokens=128,
+        messages=(TextMessage(role='user', trust_origin='human', text='Synthetic'),))
+    first = governed_generate(execution_id, request, price)
+    expired = price.model_copy(update={'expires_at': datetime.now(timezone.utc) - timedelta(seconds=1)})
+    replay = governed_generate(execution_id, request, expired)
+    assert calls == [execution_id]
+    if outcome == 'unknown':
+        assert first == {'error': 'outcome_unknown', 'provider_error': 'timeout', 'retryable': False}
+        assert replay == {'error': 'outcome_unknown', 'retryable': False}
+    else:
+        assert first['content'] == replay['content'] and replay['finish_reason'] == 'recovered'
+    with session_factory()() as db:
+        hold = db.scalar(select(BudgetReservation))
+        assert hold.status == outcome
+        root = db.get(BudgetAccount, execution_id)
+        assert root.reserved == (hold.amount if outcome == 'unknown' else 0)
 
 
 def test_priced_fixture_settles_once_and_replay_has_no_extra_effect(authenticated, monkeypatch):

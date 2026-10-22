@@ -84,7 +84,7 @@ def update_agent_config(agent_id: str, data: ConfigUpdate, session: OwnerSession
         try:
             upper = price.upper_bound()
         except AccessDenied as exc:
-            raise HTTPException(422, 'Price envelope has expired or has no price') from exc
+            raise HTTPException(422, 'Price envelope time window or upper price is invalid') from exc
         daily_cap = get_settings().daily_cap_usd
         if daily_cap is None or daily_cap < upper:
             raise HTTPException(422, 'Daily cap is unavailable or below the price upper bound')
