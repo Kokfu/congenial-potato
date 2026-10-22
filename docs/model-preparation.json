@@ -28,7 +28,7 @@
       "model_id": "gemini-3.8-flash",
       "model_source": "https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash",
       "pricing_source": "https://ai.google.dev/gemini-api/docs/pricing",
-      "adapter_status": "not_implemented",
+      "adapter_status": "pure_contract_only_no_adapter",
       "account_availability_verified": false,
       "billing_contract_complete": false
     },
@@ -39,7 +39,7 @@
       "pricing_source": "https://api-docs.deepseek.com/quick_start/pricing/",
       "observed_backing_model": "DeepSeek-V4.1-Flash-1017",
       "immutable_snapshot_verified": false,
-      "adapter_status": "not_implemented",
+      "adapter_status": "pure_contract_only_no_adapter",
       "account_availability_verified": false,
       "billing_contract_complete": false
     }
