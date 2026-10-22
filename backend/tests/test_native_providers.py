@@ -181,3 +181,52 @@ def test_native_deadline_expires_without_network_request():
             adapter.generate(past)
         assert expired.value.kind == ProviderErrorKind.TIMEOUT
     assert not calls
+
+
+@pytest.mark.parametrize('kind', ['openai', 'anthropic'])
+@pytest.mark.parametrize('failure', ['rate_limit', 'service', 'timeout', 'connection'])
+@pytest.mark.parametrize('deadline', [False, True])
+def test_injected_sdk_retry_defaults_never_resend_generation(kind, failure, deadline):
+    calls = []
+
+    def handle(request):
+        calls.append(request)
+        if failure == 'timeout':
+            raise httpx2.ReadTimeout('synthetic secret must not escape', request=request)
+        if failure == 'connection':
+            raise httpx2.ConnectError('synthetic secret must not escape', request=request)
+        return httpx2.Response(429 if failure == 'rate_limit' else 503,
+            json={'error': {'type': 'api_error', 'message': 'synthetic secret must not escape'}})
+
+    constructor, adapter_type = ((openai.OpenAI, OpenAITextAdapter) if kind == 'openai'
+                                else (anthropic.Anthropic, AnthropicTextAdapter))
+    client = constructor(
+        api_key='offline-fixture', max_retries=2,
+        http_client=httpx2.Client(transport=httpx2.MockTransport(handle)))
+    adapter = adapter_type({'fixture-model': CAPABILITIES}, client=client)
+    request = REQUEST.model_copy(update={'deadline_at': datetime.now(timezone.utc) + timedelta(seconds=20)}) if deadline else REQUEST
+    # The adapter must override the injected policy on both deadline paths.
+    with pytest.raises(ProviderError) as error:
+        adapter.generate(request)
+    expected = {'rate_limit': ProviderErrorKind.RATE_LIMIT, 'service': ProviderErrorKind.TRANSIENT,
+                'timeout': ProviderErrorKind.TIMEOUT, 'connection': ProviderErrorKind.TRANSIENT}
+    assert error.value.kind == expected[failure]
+    assert len(calls) == 1 and client.max_retries == 2
+    assert 'synthetic secret' not in str(error.value)
+
+
+@pytest.mark.parametrize('kind', ['openai', 'anthropic'])
+def test_catalog_failure_does_not_inherit_sdk_retries(kind):
+    calls = []
+
+    def handle(request):
+        calls.append(request)
+        return httpx2.Response(503, json={'error': {'type': 'api_error', 'message': 'offline'}})
+
+    constructor = openai.OpenAI if kind == 'openai' else anthropic.Anthropic
+    client = constructor(api_key='offline-fixture', max_retries=2,
+        http_client=httpx2.Client(transport=httpx2.MockTransport(handle)))
+    adapter_type = OpenAITextAdapter if kind == 'openai' else AnthropicTextAdapter
+    with pytest.raises(ProviderError):
+        adapter_type({}, client=client).discover_models()
+    assert len(calls) == 1 and client.max_retries == 2

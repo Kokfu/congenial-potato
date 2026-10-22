@@ -20,4 +20,4 @@ The owner confirmed Windows with Docker Desktop. Actual host startup and secret 
 
 ## Durable stopping point
 
-The next offline increment inventories these four provider families and the existing adapters; exact model IDs are required before pricing verification or a live trial. Production connections, public hosting, merging and paid calls remain outside scope. Local fixture operation needs no live provider. Any future infrastructure request must identify the specific missing key custodian, host access or network authorization and preserve the current clean checkpoint.
+The [four-provider inventory](provider-preparation-matrix.md) records the existing two offline adapters and missing Gemini/DeepSeek integrations. Exact API model IDs, or owner agreement to propose initial IDs from official documentation, are required before model-specific pricing/capability preparation. Production connections, public hosting, merging and paid calls remain outside scope. Local fixture operation needs no live provider. Any future infrastructure request must identify the specific missing key custodian, host access or network authorization and preserve the current clean checkpoint.

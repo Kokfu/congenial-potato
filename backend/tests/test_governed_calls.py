@@ -71,7 +71,7 @@ def test_price_config_rejects_mismatch_expiry_and_missing_daily_cap(authenticate
 
 def launch():
     DBOS(config={'name': 'workforce-test', 'system_database_url':
-        'postgresql://postgres:phase1fixture@127.0.0.1:55433/workforce_dbos_test',
+        get_settings().workflow_url,
         'application_version': 'usage-normalization-v1'})
     DBOS.launch()
 

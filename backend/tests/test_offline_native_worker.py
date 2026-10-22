@@ -23,10 +23,12 @@ MODEL = 'offline-text-v1'
 CAPABILITIES = Capabilities(max_input_tokens=4096, max_output_tokens=256, usage_reported=True)
 
 
-def offline_adapter(kind: str, requests: list[dict], malformed: bool):
+def offline_adapter(kind: str, requests: list[dict], malformed: bool | str):
     def handle(request):
         payload = json.loads(request.content)
         requests.append({'path': request.url.path, 'body': payload})
+        if malformed == 'service':
+            return httpx2.Response(503, json={'error': {'type': 'api_error', 'message': 'synthetic only'}})
         if kind == 'openai':
             assert request.url.path == '/v1/responses'
             return httpx2.Response(200, json={
@@ -49,16 +51,17 @@ def offline_adapter(kind: str, requests: list[dict], malformed: bool):
 
     transport = httpx2.MockTransport(handle)
     if kind == 'openai':
-        client = openai.OpenAI(api_key='synthetic-only', max_retries=0,
+        client = openai.OpenAI(api_key='synthetic-only', max_retries=2,
                                http_client=httpx2.Client(transport=transport))
         return OpenAITextAdapter({MODEL: CAPABILITIES}, client=client)
-    client = anthropic.Anthropic(api_key='synthetic-only', max_retries=0,
+    client = anthropic.Anthropic(api_key='synthetic-only', max_retries=2,
                                  http_client=httpx2.Client(transport=transport))
     return AnthropicTextAdapter({MODEL: CAPABILITIES}, client=client)
 
 
 @pytest.mark.parametrize('kind,expected_input,malformed', [
-    ('openai', 4, False), ('anthropic', 9, False), ('openai', None, True)])
+    ('openai', 4, False), ('anthropic', 9, False), ('openai', None, True),
+    ('openai', None, 'service'), ('anthropic', None, 'service')])
 def test_offline_native_sdk_is_governed_through_api_and_worker(authenticated, monkeypatch,
                                                                 kind, expected_input, malformed):
     assert 'openai-native' not in running_registry.connections()
@@ -99,7 +102,7 @@ def test_offline_native_sdk_is_governed_through_api_and_worker(authenticated, mo
     execution_id = dispatch.json()['execution_id']
 
     DBOS(config={'name': 'workforce-test', 'system_database_url':
-        'postgresql://postgres:phase1fixture@127.0.0.1:55433/workforce_dbos_test',
+        get_settings().workflow_url,
         'application_version': 'usage-normalization-v1'})
     DBOS.launch()
     expected_status = 'unknown' if malformed else 'succeeded'
@@ -135,7 +138,7 @@ def test_offline_native_sdk_is_governed_through_api_and_worker(authenticated, mo
             assert db.scalar(select(Approval.id).where(Approval.execution_id == execution_id)) is None
             error = db.scalar(select(AuditEvent).where(
                 AuditEvent.effect_key == f'model-error:{execution_id}'))
-            assert error.detail['provider_error'] == 'malformed_response'
+            assert error.detail['provider_error'] == ('transient' if malformed == 'service' else 'malformed_response')
         else:
             assert (execution.status, hold.status, call.provider, call.model_id) == (
                 'succeeded', 'settled', adapter.connection_id, MODEL)
