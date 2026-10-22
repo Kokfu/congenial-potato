@@ -27,10 +27,12 @@ from .models import DocumentDraftRun, ExecutionBriefContext, TaskAssignment
 from .models import PlanProposal
 from .document_drafts import DocumentDraftError, checked_plan, require_text_fixture
 from .execution_briefs import checked_version
+from .document_fixture_setup import router as document_fixture_router
 
 app = FastAPI(title='Workforce control plane', docs_url=None, redoc_url=None)
 app.include_router(brief_router)
 app.include_router(source_router)
+app.include_router(document_fixture_router)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=[urlparse(get_settings().allowed_origin).hostname])
 
 

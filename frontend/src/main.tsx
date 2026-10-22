@@ -5,6 +5,7 @@ import { ToolReview } from "./ToolReview";
 import { ActivityTimeline } from "./ActivityTimeline";
 import { ArtifactBrowser } from "./ArtifactBrowser";
 import { ProjectBrief } from "./ProjectBrief";
+import { DocumentFixtureSetup } from "./DocumentFixtureSetup";
 import "./style.css";
 
 type Project = { id: string; name: string; objective: string };
@@ -212,6 +213,9 @@ function App() {
         )}
         {tab === "Projects" && (
           <>
+            <DocumentFixtureSetup api={api} onCreated={async (id, manager) => {
+              setProjectId(id); setRunAgentId(manager); await refresh();
+            }} />
             <section className="panel">
               <h2>Projects</h2>
               <form
